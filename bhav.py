@@ -3,7 +3,7 @@ import requests, zipfile, io, sqlite3, time, random, os
 import pandas as pd
 from datetime import datetime, timedelta
 from dateutil import parser as dateparser
-from tqdm import tqdm
+#from tqdm import tqdm
 
 DB_PATH = "nse_options.db"
 TABLE = "options_bhavcopy"
@@ -224,7 +224,7 @@ def run_backfill(start_date_str="01-Jan-2024", end_date_str="18-Sep-2025"):
     session = requests.Session()
     conn = sqlite3.connect(DB_PATH)
     init_db(conn)
-    for dt in tqdm(list(date_range(s,e)), desc="Dates"):
+    for dt in list(date_range(s,e)):
         date_text = dt.strftime("%d-%b-%Y")
         url = URL_TEMPLATE.format(date=date_text)
         print("Fetching", date_text, url)
@@ -286,3 +286,4 @@ if __name__ == "__main__":
         run_incremental()
     else:
         print("Usage: python nse_backfill_store.py [backfill|incremental]")
+
