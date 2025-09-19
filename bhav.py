@@ -3,7 +3,7 @@ import requests, zipfile, io, sqlite3, time, random, os
 import pandas as pd
 from datetime import datetime, timedelta
 from dateutil import parser as dateparser
-from tqdm import tqdm
+#from tqdm import tqdm
 
 DB_PATH = "nse_options.db"
 TABLE = "options_bhavcopy"
@@ -18,7 +18,7 @@ HEADERS_BASE = {
 
 URL_TEMPLATE = (
     "https://www.nseindia.com/api/reports?archives="
-    + '[{"name":"F&O - UDiFF Common Bhavcopy Final (zip)","type":"archives","category":"derivatives","section":"equity"}]'
+    + '[{{"name":"F&O - UDiFF Common Bhavcopy Final (zip)","type":"archives","category":"derivatives","section":"equity"}}]'
     + "&date={date}&type=equity&mode=single"
 )
 
@@ -224,7 +224,7 @@ def run_backfill(start_date_str="01-Jan-2024", end_date_str="18-Sep-2025"):
     session = requests.Session()
     conn = sqlite3.connect(DB_PATH)
     init_db(conn)
-    for dt in tqdm(list(date_range(s,e)), desc="Dates"):
+    for dt in list(date_range(s,e)):
         date_text = dt.strftime("%d-%b-%Y")
         url = URL_TEMPLATE.format(date=date_text)
         print("Fetching", date_text, url)
