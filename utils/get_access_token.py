@@ -62,6 +62,7 @@ def get_access_token():
     if not auth_code:
         raise Exception("Could not retrieve authorization code. Please try again.")
 
+    api_instance = upstox_client.LoginApi()
     access_token_response = api_instance.token(
         client_id=API_KEY,
         client_secret=API_SECRET,
