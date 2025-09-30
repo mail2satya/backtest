@@ -82,13 +82,14 @@ def get_nifty50_stocks():
 
     return nifty50_instrument_keys
 
-def get_ohlc_data(api_client, instrument_key):
+def get_ohlc_data(api_client, instrument_key, symbol):
     """
     Fetches the OHLC data for a given instrument key.
     """
     market_quote_api = upstox_client.MarketQuoteApi(api_client)
     api_response = market_quote_api.get_market_quote_ohlc(
         instrument_key=instrument_key,
+        symbol=symbol,
         interval="1d",  # Use "1d" for daily OHLC
         api_version='v2'
     )
@@ -137,7 +138,7 @@ if __name__ == "__main__":
         print("\nFetching OHLC data for NIFTY50 stocks...")
         for symbol, instrument_key in nifty50_stocks.items():
             try:
-                ohlc_data = get_ohlc_data(api_client, instrument_key)
+                ohlc_data = get_ohlc_data(api_client, instrument_key, symbol)
                 print(f"--- {symbol} ---")
                 print(f"  OHLC: O={ohlc_data.ohlc.open}, H={ohlc_data.ohlc.high}, L={ohlc_data.ohlc.low}, C={ohlc_data.ohlc.close}")
             except ApiException as e:
