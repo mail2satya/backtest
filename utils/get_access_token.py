@@ -41,6 +41,7 @@ def get_access_token():
     """
     global auth_code
     auth_code = None  # Reset global variable
+    api_instance = upstox_client.LoginApi()
 
     # Manually construct the authorization URL as the SDK method is unreliable
     base_url = "https://api-v2.upstox.com/login/authorization/dialog"
