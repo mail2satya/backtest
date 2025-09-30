@@ -1,0 +1,13 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# SQLite databases
+*.db
+*.sqlite3
+
+# Configuration files
+utils/config.py
+utils/access_token.json

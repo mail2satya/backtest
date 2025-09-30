@@ -1,0 +1,9 @@
+# This is a template file. Please rename it to config.py and fill in your details.
+
+# Get your API key and secret from the Upstox developer console:
+# https://upstox.com/developer/
+API_KEY = "YOUR_API_KEY"
+API_SECRET = "YOUR_API_SECRET"
+
+# The redirect URI must be set to http://127.0.0.1:8000 in your Upstox app settings.
+REDIRECT_URI = "http://127.0.0.1:8000"
