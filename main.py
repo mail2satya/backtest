@@ -88,7 +88,8 @@ def get_ohlc_data(api_client, instrument_key):
     market_quote_api = upstox_client.MarketQuoteApi(api_client)
     api_response = market_quote_api.get_market_quote_ohlc(
         instrument_key=instrument_key,
-        interval="1d"  # Use "1d" for daily OHLC
+        interval="1d",  # Use "1d" for daily OHLC
+        api_version='v2'
     )
     return api_response.data
 
@@ -116,7 +117,7 @@ def place_dummy_order(api_client, instrument_key):
     )
 
     try:
-        api_response = order_api.place_order(body=order_request)
+        api_response = order_api.place_order(body=order_request, api_version='v2')
         print(f"Successfully placed order. Order ID: {api_response.data.order_id}")
         return api_response.data
     except upstox_client.ApiException as e:
