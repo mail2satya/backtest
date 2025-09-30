@@ -1,4 +1,5 @@
 import upstox_client
+from upstox_client.rest import ApiException
 from utils.config import API_KEY
 from utils.get_access_token import get_access_token
 import pandas as pd
@@ -120,7 +121,7 @@ def place_dummy_order(api_client, instrument_key):
         api_response = order_api.place_order(body=order_request, api_version='v2')
         print(f"Successfully placed order. Order ID: {api_response.data.order_id}")
         return api_response.data
-    except upstox_client.ApiException as e:
+    except ApiException as e:
         print(f"Failed to place order: {e}")
         return None
 
@@ -139,7 +140,7 @@ if __name__ == "__main__":
                 ohlc_data = get_ohlc_data(api_client, instrument_key)
                 print(f"--- {symbol} ---")
                 print(f"  OHLC: O={ohlc_data.ohlc.open}, H={ohlc_data.ohlc.high}, L={ohlc_data.ohlc.low}, C={ohlc_data.ohlc.close}")
-            except upstox_client.ApiException as e:
+            except ApiException as e:
                 print(f"Could not fetch OHLC for {symbol}: {e}")
 
         # --- Place a Dummy Order ---
@@ -149,5 +150,5 @@ if __name__ == "__main__":
 
     except ValueError as e:
         print(e)
-    except upstox_client.ApiException as e:
+    except ApiException as e:
         print(f"Upstox API Exception: {e}")
