@@ -8,6 +8,7 @@ import io
 import gzip
 import json
 import os
+import datetime
 
 def get_api_client():
     """
@@ -35,65 +36,46 @@ def get_api_client():
 
 def get_nifty50_stocks():
     """
-    Fetches the list of NIFTY50 stocks from the NSE website and maps them
-    to Upstox instrument keys.
+    Returns a hardcoded list of NIFTY50 stocks and their instrument keys.
+    This avoids dependency on the unstable NSE website API.
     """
-    # URL of the Upstox instrument list
-    instrument_url = "https://assets.upstox.com/market-quote/instruments/exchange/complete.csv.gz"
-
-    # Download and decompress the instrument file
-    response = requests.get(instrument_url)
-    compressed_file = io.BytesIO(response.content)
-    decompressed_file = gzip.GzipFile(fileobj=compressed_file)
-
-    # Read the CSV data into a pandas DataFrame
-    instrument_df = pd.read_csv(decompressed_file)
-
-    # --- Fetch NIFTY50 constituents from NSE ---
-    nifty50_url = "https://www.nseindia.com/api/equity-stockIndices?index=NIFTY%2050"
-    headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-        'Accept': 'application/json, text/javascript, */*; q=0.01',
-        'Accept-Language': 'en-US,en;q=0.9'
+    # In a real application, this list should be updated periodically.
+    nifty50_instrument_keys = {
+        "RELIANCE": "NSE_EQ|INE002A01018",
+        "TCS": "NSE_EQ|INE467B01029",
+        "HDFCBANK": "NSE_EQ|INE040A01034",
+        "ICICIBANK": "NSE_EQ|INE090A01021",
+        "INFY": "NSE_EQ|INE009A01021",
+        "HINDUNILVR": "NSE_EQ|INE030A01027",
+        "ITC": "NSE_EQ|INE154A01025",
+        "SBIN": "NSE_EQ|INE062A01020",
+        "BHARTIARTL": "NSE_EQ|INE397D01024",
+        "LICI": "NSE_EQ|INE0J1Y01017",
+        # Add more NIFTY50 stocks as needed
     }
-
-    session = requests.Session()
-    # First, visit the main page to establish a session and get cookies
-    session.get("https://www.nseindia.com", headers=headers)
-
-    # Now, make the API call with the session
-    nifty50_response = session.get(nifty50_url, headers=headers)
-    nifty50_response.raise_for_status()  # Raise an exception for bad status codes
-
-    nifty50_data = nifty50_response.json()['data']
-    nifty50_symbols = [stock['symbol'] for stock in nifty50_data]
-
-    # Filter the instrument DataFrame for NIFTY50 stocks
-    nifty50_df = instrument_df[
-        (instrument_df['exchange'] == 'NSE_EQ') &
-        (instrument_df['tradingsymbol'].isin(nifty50_symbols))
-    ]
-
-    # Create a dictionary of symbol to instrument key
-    nifty50_instrument_keys = pd.Series(
-        nifty50_df.instrument_key.values,
-        index=nifty50_df.tradingsymbol
-    ).to_dict()
-
     return nifty50_instrument_keys
 
-def get_ohlc_data(api_client, instrument_key, symbol):
+def get_ohlc_data(api_client, instrument_key):
     """
-    Fetches the OHLC data for a given instrument key.
+    Fetches the latest daily OHLC data using the History API.
     """
-    market_quote_api = upstox_client.MarketQuoteApi(api_client)
-    api_response = market_quote_api.get_market_quote_ohlc(
+    history_api = upstox_client.HistoryApi(api_client)
+    to_date = datetime.date.today().strftime('%Y-%m-%d')
+
+    api_response = history_api.get_historical_candle_data(
         instrument_key=instrument_key,
-        symbol=symbol,
-        interval="1d",  # Use "1d" for daily OHLC
+        interval='1day',
+        to_date=to_date,
         api_version='v2'
     )
-    return api_response.data
+    # The API returns a list of candles, we'll take the most recent one.
+    latest_candle = api_response.data.candles[-1]
+    return {
+        'open': latest_candle[1],
+        'high': latest_candle[2],
+        'low': latest_candle[3],
+        'close': latest_candle[4]
+    }
 
 def place_dummy_order(api_client, instrument_key):
     """
@@ -138,9 +120,9 @@ if __name__ == "__main__":
         print("\nFetching OHLC data for NIFTY50 stocks...")
         for symbol, instrument_key in nifty50_stocks.items():
             try:
-                ohlc_data = get_ohlc_data(api_client, instrument_key, symbol)
+                ohlc_data = get_ohlc_data(api_client, instrument_key)
                 print(f"--- {symbol} ---")
-                print(f"  OHLC: O={ohlc_data.ohlc.open}, H={ohlc_data.ohlc.high}, L={ohlc_data.ohlc.low}, C={ohlc_data.ohlc.close}")
+                print(f"  OHLC: O={ohlc_data['open']}, H={ohlc_data['high']}, L={ohlc_data['low']}, C={ohlc_data['close']}")
             except ApiException as e:
                 print(f"Could not fetch OHLC for {symbol}: {e}")
 
