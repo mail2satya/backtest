@@ -42,7 +42,7 @@ def get_access_token():
     auth_code = None  # Reset global variable
 
     api_instance = upstox_client.LoginApi()
-    response = api_instance.authorize(client_id=API_KEY, redirect_uri=REDIRECT_URI, response_type='code')
+    response = api_instance.authorize(client_id=API_KEY, redirect_uri=REDIRECT_URI, response_type='code', api_version='v2')
 
     print("Opening browser for login...")
     webbrowser.open(response)
@@ -60,7 +60,8 @@ def get_access_token():
         client_secret=API_SECRET,
         redirect_uri=REDIRECT_URI,
         grant_type='authorization_code',
-        code=auth_code
+        code=auth_code,
+        api_version='v2'
     )
 
     token_data = {'access_token': access_token_response.access_token}
