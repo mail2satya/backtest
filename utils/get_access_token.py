@@ -2,6 +2,7 @@ import upstox_client
 import webbrowser
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
+import urllib.parse
 from .config import API_KEY, API_SECRET, REDIRECT_URI
 import json
 import threading
@@ -41,11 +42,17 @@ def get_access_token():
     global auth_code
     auth_code = None  # Reset global variable
 
-    api_instance = upstox_client.LoginApi()
-    response = api_instance.authorize(client_id=API_KEY, redirect_uri=REDIRECT_URI, api_version='v2')
+    # Manually construct the authorization URL as the SDK method is unreliable
+    base_url = "https://api-v2.upstox.com/login/authorization/dialog"
+    params = {
+        "client_id": API_KEY,
+        "redirect_uri": REDIRECT_URI,
+        "response_type": "code"
+    }
+    auth_url = f"{base_url}?{urllib.parse.urlencode(params)}"
 
     print("Opening browser for login...")
-    webbrowser.open(response)
+    webbrowser.open(auth_url)
 
     server_address = ('', 8000)
     with HTTPServer(server_address, RedirectHandler) as httpd:
