@@ -66,8 +66,8 @@ def get_ohlc_data(api_client, instrument_key):
         to_date=to_date,
         api_version='v2'
     )
-    # The API returns a list of candles, we'll take the most recent one.
-    latest_candle = api_response.data.candles[-1]
+    # The API returns candles in reverse chronological order (newest first).
+    latest_candle = api_response.data.candles[0]
     return {
         'open': latest_candle[1],
         'high': latest_candle[2],
