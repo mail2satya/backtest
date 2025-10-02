@@ -43,12 +43,13 @@ def get_access_token():
     auth_code = None  # Reset global variable
     api_instance = upstox_client.LoginApi()
 
-    # Manually construct the authorization URL as the SDK method is unreliable
+    # Manually construct the authorization URL with required scopes for trading
     base_url = "https://api-v2.upstox.com/login/authorization/dialog"
     params = {
         "client_id": API_KEY,
         "redirect_uri": REDIRECT_URI,
-        "response_type": "code"
+        "response_type": "code",
+        "scope": "interactive"  # Requesting interactive trading permissions
     }
     auth_url = f"{base_url}?{urllib.parse.urlencode(params)}"
 
@@ -63,7 +64,6 @@ def get_access_token():
     if not auth_code:
         raise Exception("Could not retrieve authorization code. Please try again.")
 
-    api_instance = upstox_client.LoginApi()
     access_token_response = api_instance.token(
         client_id=API_KEY,
         client_secret=API_SECRET,
