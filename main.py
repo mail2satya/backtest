@@ -39,7 +39,6 @@ def get_nifty50_stocks():
     Returns a hardcoded list of NIFTY50 stocks and their instrument keys.
     This avoids dependency on the unstable NSE website API.
     """
-    # In a real application, this list should be updated periodically.
     nifty50_instrument_keys = {
         "RELIANCE": "NSE_EQ|INE002A01018",
         "TCS": "NSE_EQ|INE467B01029",
@@ -51,7 +50,6 @@ def get_nifty50_stocks():
         "SBIN": "NSE_EQ|INE062A01020",
         "BHARTIARTL": "NSE_EQ|INE397D01024",
         "LICI": "NSE_EQ|INE0J1Y01017",
-        # Add more NIFTY50 stocks as needed
     }
     return nifty50_instrument_keys
 
@@ -60,12 +58,14 @@ def get_ohlc_data(api_client, instrument_key):
     Fetches the latest daily OHLC data using the History API.
     """
     history_api = upstox_client.HistoryApi(api_client)
-    to_date = datetime.date.today().strftime('%Y-%m-%d')
+    to_date = datetime.date.today()
+    from_date = to_date - datetime.timedelta(days=7)
 
     api_response = history_api.get_historical_candle_data(
         instrument_key=instrument_key,
-        interval='day',  # Corrected interval from '1day' to 'day'
-        to_date=to_date,
+        interval='day',
+        to_date=to_date.strftime('%Y-%m-%d'),
+        from_date=from_date.strftime('%Y-%m-%d'),
         api_version='v2'
     )
     # The API returns a list of candles, we'll take the most recent one.
@@ -80,19 +80,15 @@ def get_ohlc_data(api_client, instrument_key):
 def place_dummy_order(api_client, instrument_key):
     """
     Places a dummy (test) order.
-
-    This function places a simple BUY order for a single quantity of the
-    specified instrument. This is for demonstration purposes and uses
-    the 'MARKET' order type.
     """
     order_api = upstox_client.OrderApi(api_client)
 
     order_request = upstox_client.PlaceOrderRequest(
         quantity=1,
-        product="D",  # Delivery
+        product="D",
         validity="DAY",
-        price=0,  # Market order
-        instrument_token=instrument_key,  # Corrected from instrument_key to instrument_token
+        price=0,
+        instrument_token=instrument_key,
         order_type="MARKET",
         transaction_type="BUY",
         disclosed_quantity=0,
@@ -113,10 +109,8 @@ if __name__ == "__main__":
         api_client = get_api_client()
         print("Successfully authenticated with Upstox API.")
 
-        # Fetch NIFTY50 stocks
         nifty50_stocks = get_nifty50_stocks()
 
-        # --- Fetch OHLC Data ---
         print("\nFetching OHLC data for NIFTY50 stocks...")
         for symbol, instrument_key in nifty50_stocks.items():
             try:
@@ -126,7 +120,6 @@ if __name__ == "__main__":
             except ApiException as e:
                 print(f"Could not fetch OHLC for {symbol}: {e}")
 
-        # --- Place a Dummy Order ---
         print("\nPlacing a dummy order...")
         first_stock_instrument_key = list(nifty50_stocks.values())[0]
         place_dummy_order(api_client, first_stock_instrument_key)
