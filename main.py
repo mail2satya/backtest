@@ -58,14 +58,12 @@ def get_ohlc_data(api_client, instrument_key):
     Fetches the latest daily OHLC data using the History API.
     """
     history_api = upstox_client.HistoryApi(api_client)
-    to_date = datetime.date.today()
-    from_date = to_date - datetime.timedelta(days=7)
+    to_date = datetime.date.today().strftime('%Y-%m-%d')
 
     api_response = history_api.get_historical_candle_data(
         instrument_key=instrument_key,
         interval='day',
-        to_date=to_date.strftime('%Y-%m-%d'),
-        from_date=from_date.strftime('%Y-%m-%d'),
+        to_date=to_date,
         api_version='v2'
     )
     # The API returns a list of candles, we'll take the most recent one.
