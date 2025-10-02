@@ -64,7 +64,7 @@ def get_ohlc_data(api_client, instrument_key):
 
     api_response = history_api.get_historical_candle_data(
         instrument_key=instrument_key,
-        interval='1day',
+        interval='day',  # Corrected interval from '1day' to 'day'
         to_date=to_date,
         api_version='v2'
     )
@@ -92,7 +92,7 @@ def place_dummy_order(api_client, instrument_key):
         product="D",  # Delivery
         validity="DAY",
         price=0,  # Market order
-        instrument_key=instrument_key,
+        instrument_token=instrument_key,  # Corrected from instrument_key to instrument_token
         order_type="MARKET",
         transaction_type="BUY",
         disclosed_quantity=0,
