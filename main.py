@@ -4,7 +4,6 @@ from upstox_client.rest import ApiException
 from utils.config import API_KEY
 from utils.get_access_token import get_access_token
 from utils.database import create_ohlc_table, save_ohlc_data
-from utils.data_fetcher import get_all_ohlc_data
 import datetime
 
 def get_api_client():
@@ -34,18 +33,42 @@ def get_nifty50_stocks():
     Returns a hardcoded list of NIFTY50 stocks and their instrument keys.
     """
     nifty50_instrument_keys = {
-        "RELIANCE": "NSE_EQ|INE002A01018",
-        "TCS": "NSE_EQ|INE467B01029",
-        "HDFCBANK": "NSE_EQ|INE040A01034",
-        "ICICIBANK": "NSE_EQ|INE090A01021",
-        "INFY": "NSE_EQ|INE009A01021",
-        "HINDUNILVR": "NSE_EQ|INE030A01027",
-        "ITC": "NSE_EQ|INE154A01025",
-        "SBIN": "NSE_EQ|INE062A01020",
-        "BHARTIARTL": "NSE_EQ|INE397D01024",
-        "LICI": "NSE_EQ|INE0J1Y01017",
+        "RELIANCE": "NSE_EQ|INE002A01018", "TCS": "NSE_EQ|INE467B01029",
+        "HDFCBANK": "NSE_EQ|INE040A01034", "ICICIBANK": "NSE_EQ|INE090A01021",
+        "INFY": "NSE_EQ|INE009A01021", "HINDUNILVR": "NSE_EQ|INE030A01027",
+        "ITC": "NSE_EQ|INE154A01025", "SBIN": "NSE_EQ|INE062A01020",
+        "BHARTIARTL": "NSE_EQ|INE397D01024", "LICI": "NSE_EQ|INE0J1Y01017",
     }
     return nifty50_instrument_keys
+
+def get_all_ohlc_data(api_client, instrument_key):
+    """
+    Fetches all available daily OHLC data for a given instrument.
+    """
+    history_api = upstox_client.HistoryApi(api_client)
+    all_candles = []
+    from_date = datetime.date.today() - datetime.timedelta(days=365 * 20)
+    while from_date < datetime.date.today():
+        to_date = from_date + datetime.timedelta(days=(365 * 2))
+        if to_date > datetime.date.today():
+            to_date = datetime.date.today()
+        from_date_str = from_date.strftime('%Y-%m-%d')
+        to_date_str = to_date.strftime('%Y-%m-%d')
+        try:
+            api_response = history_api.get_historical_candle_data1(
+                instrument_key=instrument_key, interval='day',
+                from_date=from_date_str, to_date=to_date_str, api_version='v2'
+            )
+            if api_response.status == 'success' and hasattr(api_response.data, 'candles') and api_response.data.candles:
+                all_candles.extend(api_response.data.candles)
+        except ApiException as e:
+            if "No data found" in str(e.body) or "not found" in str(e.body).lower():
+                pass
+            else:
+                print(f"API Exception for {instrument_key} ({from_date_str} to {to_date_str}): {e}")
+                break
+        from_date = to_date + datetime.timedelta(days=1)
+    return all_candles
 
 def place_dummy_order(api_client, instrument_key):
     """
@@ -70,9 +93,7 @@ if __name__ == "__main__":
         create_ohlc_table()
         api_client = get_api_client()
         print("Successfully authenticated with Upstox API.")
-
         nifty50_stocks = get_nifty50_stocks()
-
         print("\nFetching and storing all available OHLC data for NIFTY50 stocks...")
         for symbol, instrument_key in nifty50_stocks.items():
             print(f"--- Processing {symbol} ---")
@@ -84,7 +105,6 @@ if __name__ == "__main__":
                     print(f"No OHLC data found for {symbol}.")
             except Exception as e:
                 print(f"Could not process {symbol}: {e}")
-
         prompt = input("\nDo you want to place a dummy order? (Y/N): ")
         if prompt.lower() == 'y':
             print("\nPlacing a dummy order...")
@@ -92,7 +112,6 @@ if __name__ == "__main__":
             place_dummy_order(api_client, first_stock_instrument_key)
         else:
             print("\nSkipping dummy order placement.")
-
     except ValueError as e:
         print(e)
     except ApiException as e:
