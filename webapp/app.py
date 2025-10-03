@@ -54,5 +54,4 @@ def ohlc():
     return jsonify(data)
 
 if __name__ == '__main__':
-    # Temporarily disabling reloader for stable verification
-    app.run(debug=True, port=5001, use_reloader=False)
+    app.run(debug=True, port=5001)
