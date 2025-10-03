@@ -2,6 +2,7 @@ import upstox_client
 from upstox_client.rest import ApiException
 from utils.config import API_KEY
 from utils.get_access_token import get_access_token
+from utils.database import create_ohlc_table, save_ohlc_data
 import pandas as pd
 import requests
 import io
@@ -53,27 +54,53 @@ def get_nifty50_stocks():
     }
     return nifty50_instrument_keys
 
-def get_ohlc_data(api_client, instrument_key):
+def get_all_ohlc_data(api_client, instrument_key):
     """
-    Fetches the latest daily OHLC data using the History API.
+    Fetches all available daily OHLC data (up to 20 years back) for a given instrument.
     """
     history_api = upstox_client.HistoryApi(api_client)
-    to_date = datetime.date.today().strftime('%Y-%m-%d')
+    to_date = datetime.date.today()
+    all_candles = []
 
-    api_response = history_api.get_historical_candle_data(
-        instrument_key=instrument_key,
-        interval='day',
-        to_date=to_date,
-        api_version='v2'
-    )
-    # The API returns candles in reverse chronological order (newest first).
-    latest_candle = api_response.data.candles[0]
-    return {
-        'open': latest_candle[1],
-        'high': latest_candle[2],
-        'low': latest_candle[3],
-        'close': latest_candle[4]
-    }
+    # Go back up to ~20 years in 2-year chunks
+    for _ in range(10):
+        from_date = to_date - datetime.timedelta(days=(365 * 2))
+
+        from_date_str = from_date.strftime('%Y-%m-%d')
+        to_date_str = to_date.strftime('%Y-%m-%d')
+
+        try:
+            # Using get_historical_candle_data1 for date range
+            api_response = history_api.get_historical_candle_data1(
+                instrument_key=instrument_key,
+                interval='1day',
+                from_date=from_date_str,
+                to_date=to_date_str,
+                api_version='v2'
+            )
+
+            if api_response.status == 'success' and hasattr(api_response.data, 'candles') and api_response.data.candles:
+                # The data comes in ascending order, so we prepend to keep it chronological
+                all_candles = api_response.data.candles + all_candles
+            else:
+                break # Stop if no more data is returned
+
+        except ApiException as e:
+            if "No data found" in str(e.body) or "not found" in str(e.body).lower():
+                print(f"No more historical data for {instrument_key} before {to_date_str}.")
+                break
+            else:
+                print(f"API Exception for {instrument_key} ({from_date_str} to {to_date_str}): {e}")
+                break
+
+        # Move to the previous 2-year period for the next iteration
+        to_date = from_date - datetime.timedelta(days=1)
+
+        # Break if we've gone back more than 20 years (sanity check)
+        if to_date < datetime.date.today() - datetime.timedelta(days=365*20):
+            break
+
+    return all_candles
 
 def place_dummy_order(api_client, instrument_key):
     """
@@ -104,25 +131,42 @@ def place_dummy_order(api_client, instrument_key):
 
 if __name__ == "__main__":
     try:
+        # Initialize database
+        create_ohlc_table()
+
         api_client = get_api_client()
         print("Successfully authenticated with Upstox API.")
 
         nifty50_stocks = get_nifty50_stocks()
 
-        print("\nFetching OHLC data for NIFTY50 stocks...")
+        print("\nFetching and storing all available OHLC data for NIFTY50 stocks...")
         for symbol, instrument_key in nifty50_stocks.items():
+            print(f"--- Processing {symbol} ---")
             try:
-                ohlc_data = get_ohlc_data(api_client, instrument_key)
-                print(f"--- {symbol} ---")
-                print(f"  OHLC: O={ohlc_data['open']}, H={ohlc_data['high']}, L={ohlc_data['low']}, C={ohlc_data['close']}")
-            except ApiException as e:
-                print(f"Could not fetch OHLC for {symbol}: {e}")
+                # Fetch all data
+                all_ohlc_data = get_all_ohlc_data(api_client, instrument_key)
+                if all_ohlc_data:
+                    # Save data to database
+                    save_ohlc_data(symbol, all_ohlc_data)
+                else:
+                    print(f"No OHLC data found for {symbol}.")
+            except Exception as e:
+                print(f"Could not process {symbol}: {e}")
 
-        print("\nPlacing a dummy order...")
-        first_stock_instrument_key = list(nifty50_stocks.values())[0]
-        place_dummy_order(api_client, first_stock_instrument_key)
+        prompt = input("\nDo you want to place a dummy order? (Y/N): ")
+        if prompt.lower() == 'y':
+            print("\nPlacing a dummy order...")
+            first_stock_instrument_key = list(nifty50_stocks.values())[0]
+            place_dummy_order(api_client, first_stock_instrument_key)
+        else:
+            print("\nSkipping dummy order placement.")
 
     except ValueError as e:
         print(e)
     except ApiException as e:
-        print(f"Upstox API Exception: {e}")
+        if "UDAPI100050" in str(e.body):
+            print("Invalid token detected. Deleting access_token.json. Please rerun the script to re-authenticate.")
+            if os.path.exists("utils/access_token.json"):
+                os.remove("utils/access_token.json")
+        else:
+            print(f"Upstox API Exception: {e}")
