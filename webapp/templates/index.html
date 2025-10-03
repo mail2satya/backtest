@@ -16,8 +16,11 @@
         #suggestions div:hover { background-color: #f1f1f1; }
         #chart { width: 100%; height: 500px; }
         #selected-symbols-container { margin-bottom: 15px; }
-        #selected-symbols span { display: inline-block; padding: 5px 10px; background-color: #e0e0e0; border-radius: 15px; margin-right: 5px; font-size: 14px; }
-        #clear-chart { padding: 8px 12px; border: none; background-color: #f44336; color: white; border-radius: 5px; cursor: pointer; float: right; }
+        #selected-symbols-container { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; flex-wrap: wrap; }
+        #selected-symbols .symbol-tag { display: inline-flex; align-items: center; padding: 5px 10px; background-color: #e0e0e0; border-radius: 15px; margin-right: 5px; margin-bottom: 5px; font-size: 14px; }
+        #selected-symbols .close-btn { margin-left: 8px; border: none; background: #bbb; color: white; border-radius: 50%; width: 18px; height: 18px; line-height: 18px; text-align: center; cursor: pointer; font-size: 12px; padding: 0; }
+        #selected-symbols .close-btn:hover { background: #999; }
+        #clear-chart { padding: 8px 12px; border: none; background-color: #f44336; color: white; border-radius: 5px; cursor: pointer; }
         #clear-chart:hover { background-color: #d32f2f; }
     </style>
 </head>
@@ -29,7 +32,7 @@
     </div>
 
     <div id="selected-symbols-container">
-        <span id="selected-symbols"></span>
+        <div id="selected-symbols"></div>
         <button id="clear-chart" style="display:none;">Clear Chart</button>
     </div>
 
@@ -57,9 +60,11 @@
         function updateSelectedSymbolsUI() {
             selectedSymbolsContainer.innerHTML = '';
             plottedSymbols.forEach(symbol => {
-                const span = document.createElement('span');
-                span.textContent = symbol;
-                selectedSymbolsContainer.appendChild(span);
+                const tag = document.createElement('div');
+                tag.className = 'symbol-tag';
+                // Use the times symbol for a better 'x'
+                tag.innerHTML = `<span>${symbol}</span><button class="close-btn" data-symbol="${symbol}">&times;</button>`;
+                selectedSymbolsContainer.appendChild(tag);
             });
             clearChartBtn.style.display = plottedSymbols.length > 0 ? 'inline-block' : 'none';
         }
@@ -97,7 +102,7 @@
                         title: `${symbol} Candlestick Chart`,
                         xaxis: { title: 'Date', rangeslider: { visible: false } },
                         yaxis: { title: 'Price' },
-                        dragmode: 'zoom'
+                        dragmode: 'pan'
                     };
 
                 } else {
@@ -118,7 +123,7 @@
                         title: `Stock Price % Change Comparison`,
                         xaxis: { title: 'Date' },
                         yaxis: { title: '% Change' },
-                        dragmode: 'zoom',
+                        dragmode: 'pan',
                         showlegend: true
                     };
                 }
@@ -175,6 +180,14 @@
         });
 
         searchInput.addEventListener('input', debounce(onSearchInput, 300));
+
+        selectedSymbolsContainer.addEventListener('click', (event) => {
+            if (event.target.classList.contains('close-btn')) {
+                const symbolToRemove = event.target.dataset.symbol;
+                plottedSymbols = plottedSymbols.filter(s => s !== symbolToRemove);
+                plotChart();
+            }
+        });
 
         document.addEventListener('click', (event) => {
             if (!suggestionsContainer.contains(event.target) && event.target !== searchInput) {
