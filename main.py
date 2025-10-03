@@ -76,8 +76,8 @@ def get_all_ohlc_data(api_client, instrument_key):
         to_date_str = to_date.strftime('%Y-%m-%d')
 
         try:
-            # The correct function is get_historical_candle_data, which takes from_date
-            api_response = history_api.get_historical_candle_data(
+            # The correct function is get_historical_candle_data1, which takes from_date
+            api_response = history_api.get_historical_candle_data1(
                 instrument_key=instrument_key,
                 interval='day',
                 from_date=from_date_str,
