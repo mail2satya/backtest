@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stock Chart Viewer</title>
+    <!-- Include Plotly.js from a CDN -->
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; margin: 40px auto; max-width: 800px; line-height: 1.6; color: #333; }
+        h1 { text-align: center; }
+        .search-container { position: relative; margin-bottom: 20px; }
+        #stock-search { width: 100%; padding: 10px; font-size: 16px; border: 1px solid #ccc; border-radius: 5px; }
+        #suggestions { position: absolute; border: 1px solid #ddd; border-top: none; z-index: 99; top: 100%; left: 0; right: 0; }
+        #suggestions div { padding: 10px; cursor: pointer; background-color: #fff; border-bottom: 1px solid #ddd; }
+        #suggestions div:hover { background-color: #f1f1f1; }
+        #chart { width: 100%; height: 500px; }
+    </style>
+</head>
+<body>
+    <h1>Stock Chart Viewer</h1>
+    <div class="search-container">
+        <input type="text" id="stock-search" placeholder="Type a stock symbol (e.g., TCS)...">
+        <div id="suggestions"></div>
+    </div>
+    <div id="chart"></div>
+
+    <script>
+        const searchInput = document.getElementById('stock-search');
+        const suggestionsContainer = document.getElementById('suggestions');
+        const chartDiv = document.getElementById('chart');
+
+        // Debounce function to limit API calls while typing
+        function debounce(func, delay) {
+            let timeout;
+            return function(...args) {
+                const context = this;
+                clearTimeout(timeout);
+                timeout = setTimeout(() => func.apply(context, args), delay);
+            };
+        }
+
+        // Function to fetch and display the chart
+        async function plotChart(symbol) {
+            try {
+                const response = await fetch(`/api/ohlc?symbol=${symbol}`);
+                const data = await response.json();
+
+                if (data.length === 0) {
+                    chartDiv.innerHTML = `<p>No data found for ${symbol}</p>`;
+                    return;
+                }
+
+                const trace = {
+                    x: data.map(d => d.timestamp),
+                    open: data.map(d => d.open),
+                    high: data.map(d => d.high),
+                    low: data.map(d => d.low),
+                    close: data.map(d => d.close),
+                    type: 'candlestick',
+                    name: symbol,
+                    increasing: { line: { color: '#17BECF' } },
+                    decreasing: { line: { color: '#7F7F7F' } }
+                };
+
+                const layout = {
+                    title: `${symbol} Candlestick Chart`,
+                    xaxis: {
+                        title: 'Date',
+                        rangeslider: { visible: false }
+                    },
+                    yaxis: { title: 'Price' }
+                };
+
+                Plotly.newPlot(chartDiv, [trace], layout);
+
+            } catch (error) {
+                console.error('Error fetching chart data:', error);
+                chartDiv.innerHTML = '<p>Error loading chart data.</p>';
+            }
+        }
+
+        // Function to handle search input
+        const onSearchInput = async (event) => {
+            const query = event.target.value;
+            suggestionsContainer.innerHTML = '';
+
+            if (query.length < 2) {
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/search?q=${query}`);
+                const suggestions = await response.json();
+
+                suggestions.forEach(symbol => {
+                    const div = document.createElement('div');
+                    div.textContent = symbol;
+                    div.addEventListener('click', () => {
+                        searchInput.value = symbol;
+                        suggestionsContainer.innerHTML = '';
+                        plotChart(symbol);
+                    });
+                    suggestionsContainer.appendChild(div);
+                });
+            } catch (error) {
+                console.error('Error fetching suggestions:', error);
+            }
+        };
+
+        searchInput.addEventListener('input', debounce(onSearchInput, 300));
+
+        // Clear suggestions when clicking outside
+        document.addEventListener('click', function(event) {
+            if (!suggestionsContainer.contains(event.target) && event.target !== searchInput) {
+                suggestionsContainer.innerHTML = '';
+            }
+        });
+
+    </script>
+</body>
+</html>
