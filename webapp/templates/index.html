@@ -111,18 +111,17 @@
                         const response = await fetch(`/api/ohlc?symbol=${symbol}`);
                         const data = await response.json();
                         if (data.length > 0) {
-                            const basePrice = data[0].close;
                             traces.push({
                                 x: data.map(d => d.timestamp),
-                                y: data.map(d => ((d.close / basePrice) - 1) * 100),
+                                y: data.map(d => d.close),
                                 type: 'scatter', mode: 'lines', name: symbol
                             });
                         }
                     }
                     layout = {
-                        title: `Stock Price % Change Comparison`,
+                        title: `Stock Price Comparison`,
                         xaxis: { title: 'Date' },
-                        yaxis: { title: '% Change' },
+                        yaxis: { title: 'Price', rangemode: 'tozero' },
                         dragmode: 'pan',
                         showlegend: true
                     };
