@@ -15,6 +15,10 @@
         #suggestions div { padding: 10px; cursor: pointer; background-color: #fff; border-bottom: 1px solid #ddd; }
         #suggestions div:hover { background-color: #f1f1f1; }
         #chart { width: 100%; height: 500px; }
+        #selected-symbols-container { margin-bottom: 15px; }
+        #selected-symbols span { display: inline-block; padding: 5px 10px; background-color: #e0e0e0; border-radius: 15px; margin-right: 5px; font-size: 14px; }
+        #clear-chart { padding: 8px 12px; border: none; background-color: #f44336; color: white; border-radius: 5px; cursor: pointer; float: right; }
+        #clear-chart:hover { background-color: #d32f2f; }
     </style>
 </head>
 <body>
@@ -23,14 +27,24 @@
         <input type="text" id="stock-search" placeholder="Type a stock symbol (e.g., TCS)...">
         <div id="suggestions"></div>
     </div>
+
+    <div id="selected-symbols-container">
+        <span id="selected-symbols"></span>
+        <button id="clear-chart" style="display:none;">Clear Chart</button>
+    </div>
+
     <div id="chart"></div>
 
     <script>
         const searchInput = document.getElementById('stock-search');
         const suggestionsContainer = document.getElementById('suggestions');
+        const selectedSymbolsContainer = document.getElementById('selected-symbols');
+        const clearChartBtn = document.getElementById('clear-chart');
         const chartDiv = document.getElementById('chart');
 
-        // Debounce function to limit API calls while typing
+        let plottedSymbols = [];
+
+        // Debounce function to limit API calls
         function debounce(func, delay) {
             let timeout;
             return function(...args) {
@@ -40,39 +54,82 @@
             };
         }
 
-        // Function to fetch and display the chart
-        async function plotChart(symbol) {
-            try {
-                const response = await fetch(`/api/ohlc?symbol=${symbol}`);
-                const data = await response.json();
+        function updateSelectedSymbolsUI() {
+            selectedSymbolsContainer.innerHTML = '';
+            plottedSymbols.forEach(symbol => {
+                const span = document.createElement('span');
+                span.textContent = symbol;
+                selectedSymbolsContainer.appendChild(span);
+            });
+            clearChartBtn.style.display = plottedSymbols.length > 0 ? 'inline-block' : 'none';
+        }
 
-                if (data.length === 0) {
-                    chartDiv.innerHTML = `<p>No data found for ${symbol}</p>`;
+        // Function to fetch and display the chart(s)
+        async function plotChart() {
+            if (plottedSymbols.length === 0) {
+                Plotly.purge(chartDiv);
+                updateSelectedSymbolsUI();
+                return;
+            }
+
+            const traces = [];
+            let layout;
+            const config = { scrollZoom: true };
+
+            try {
+                if (plottedSymbols.length === 1) {
+                    // Single stock: Plot candlestick chart
+                    const symbol = plottedSymbols[0];
+                    const response = await fetch(`/api/ohlc?symbol=${symbol}`);
+                    const data = await response.json();
+
+                    if (data.length > 0) {
+                        traces.push({
+                            x: data.map(d => d.timestamp),
+                            open: data.map(d => d.open),
+                            high: data.map(d => d.high),
+                            low: data.map(d => d.low),
+                            close: data.map(d => d.close),
+                            type: 'candlestick', name: symbol
+                        });
+                    }
+                    layout = {
+                        title: `${symbol} Candlestick Chart`,
+                        xaxis: { title: 'Date', rangeslider: { visible: false } },
+                        yaxis: { title: 'Price' },
+                        dragmode: 'zoom'
+                    };
+
+                } else {
+                    // Multiple stocks: Plot percentage change line chart
+                    for (const symbol of plottedSymbols) {
+                        const response = await fetch(`/api/ohlc?symbol=${symbol}`);
+                        const data = await response.json();
+                        if (data.length > 0) {
+                            const basePrice = data[0].close;
+                            traces.push({
+                                x: data.map(d => d.timestamp),
+                                y: data.map(d => ((d.close / basePrice) - 1) * 100),
+                                type: 'scatter', mode: 'lines', name: symbol
+                            });
+                        }
+                    }
+                    layout = {
+                        title: `Stock Price % Change Comparison`,
+                        xaxis: { title: 'Date' },
+                        yaxis: { title: '% Change' },
+                        dragmode: 'zoom',
+                        showlegend: true
+                    };
+                }
+
+                if (traces.length === 0) {
+                    chartDiv.innerHTML = `<p>No data found for selected symbols.</p>`;
                     return;
                 }
 
-                const trace = {
-                    x: data.map(d => d.timestamp),
-                    open: data.map(d => d.open),
-                    high: data.map(d => d.high),
-                    low: data.map(d => d.low),
-                    close: data.map(d => d.close),
-                    type: 'candlestick',
-                    name: symbol,
-                    increasing: { line: { color: '#17BECF' } },
-                    decreasing: { line: { color: '#7F7F7F' } }
-                };
-
-                const layout = {
-                    title: `${symbol} Candlestick Chart`,
-                    xaxis: {
-                        title: 'Date',
-                        rangeslider: { visible: false }
-                    },
-                    yaxis: { title: 'Price' }
-                };
-
-                Plotly.newPlot(chartDiv, [trace], layout);
+                Plotly.newPlot(chartDiv, traces, layout, config);
+                updateSelectedSymbolsUI();
 
             } catch (error) {
                 console.error('Error fetching chart data:', error);
@@ -85,9 +142,7 @@
             const query = event.target.value;
             suggestionsContainer.innerHTML = '';
 
-            if (query.length < 2) {
-                return;
-            }
+            if (query.length < 2) return;
 
             try {
                 const response = await fetch(`/api/search?q=${query}`);
@@ -97,9 +152,14 @@
                     const div = document.createElement('div');
                     div.textContent = symbol;
                     div.addEventListener('click', () => {
-                        searchInput.value = symbol;
+                        searchInput.value = ''; // Clear search input
                         suggestionsContainer.innerHTML = '';
-                        plotChart(symbol);
+                        if (plottedSymbols.length < 3 && !plottedSymbols.includes(symbol)) {
+                            plottedSymbols.push(symbol);
+                            plotChart();
+                        } else if (plottedSymbols.length >= 3) {
+                            alert("You can compare a maximum of 3 symbols.");
+                        }
                     });
                     suggestionsContainer.appendChild(div);
                 });
@@ -108,10 +168,15 @@
             }
         };
 
+        clearChartBtn.addEventListener('click', () => {
+            plottedSymbols = [];
+            Plotly.purge(chartDiv);
+            updateSelectedSymbolsUI();
+        });
+
         searchInput.addEventListener('input', debounce(onSearchInput, 300));
 
-        // Clear suggestions when clicking outside
-        document.addEventListener('click', function(event) {
+        document.addEventListener('click', (event) => {
             if (!suggestionsContainer.contains(event.target) && event.target !== searchInput) {
                 suggestionsContainer.innerHTML = '';
             }
