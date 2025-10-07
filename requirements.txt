@@ -1,3 +1,7 @@
 upstox-python-sdk
 pandas
 requests
+flask
+Flask-Login
+Flask-WTF
+gunicorn
