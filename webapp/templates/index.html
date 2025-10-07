@@ -138,7 +138,10 @@
 
                     if (markerText) {
                         const dateTimestamp = new Date(d.date).getTime();
-                        if (dateTimestamp >= xaxis.range[0] && dateTimestamp <= xaxis.range[1]) {
+                        const rangeStart = new Date(xaxis.range[0]).getTime();
+                        const rangeEnd = new Date(xaxis.range[1]).getTime();
+
+                        if (dateTimestamp >= rangeStart && dateTimestamp <= rangeEnd) {
                             const pixelX = xaxis.l2p(dateTimestamp);
                             if (pixelX !== undefined) {
                                 const marker = document.createElement('div');
