@@ -1,8 +1,76 @@
-from flask import Flask, jsonify, render_template, request
+from flask import Flask, jsonify, render_template, request, redirect, url_for, flash
 import sqlite3
 from datetime import datetime
+from werkzeug.security import generate_password_hash, check_password_hash
+from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
 
 app = Flask(__name__)
+app.config['SECRET_KEY'] = 'a_very_secret_key_that_should_be_changed' # Replace with a real secret key
+
+login_manager = LoginManager()
+login_manager.init_app(app)
+login_manager.login_view = 'login' # Redirect to login page if user is not authenticated
+
+class User(UserMixin):
+    def __init__(self, id, username, password_hash):
+        self.id = id
+        self.username = username
+        self.password_hash = password_hash
+
+@login_manager.user_loader
+def load_user(user_id):
+    conn = get_db_connection()
+    user_data = conn.execute('SELECT * FROM users WHERE id = ?', (user_id,)).fetchone()
+    conn.close()
+    if user_data:
+        return User(id=user_data['id'], username=user_data['username'], password_hash=user_data['password_hash'])
+    return None
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if current_user.is_authenticated:
+        return redirect(url_for('index'))
+    if request.method == 'POST':
+        username = request.form['username']
+        password = request.form['password']
+        conn = get_db_connection()
+        user_data = conn.execute('SELECT * FROM users WHERE username = ?', (username,)).fetchone()
+        conn.close()
+        user = User(id=user_data['id'], username=user_data['username'], password_hash=user_data['password_hash']) if user_data else None
+        if user and check_password_hash(user.password_hash, password):
+            login_user(user)
+            return redirect(url_for('index'))
+        else:
+            flash('Invalid username or password')
+    return render_template('login.html')
+
+@app.route('/register', methods=['GET', 'POST'])
+def register():
+    if current_user.is_authenticated:
+        return redirect(url_for('index'))
+    if request.method == 'POST':
+        username = request.form['username']
+        password = request.form['password']
+        conn = get_db_connection()
+        user_exists = conn.execute('SELECT id FROM users WHERE username = ?', (username,)).fetchone()
+        if user_exists:
+            flash('Username already exists.')
+            conn.close()
+            return redirect(url_for('register'))
+
+        password_hash = generate_password_hash(password, method='pbkdf2:sha256')
+        conn.execute('INSERT INTO users (username, password_hash) VALUES (?, ?)', (username, password_hash))
+        conn.commit()
+        conn.close()
+        flash('Registration successful! Please log in.')
+        return redirect(url_for('login'))
+    return render_template('register.html')
+
+@app.route('/logout')
+@login_required
+def logout():
+    logout_user()
+    return redirect(url_for('login'))
 
 import os
 
@@ -17,6 +85,7 @@ def get_db_connection():
     return conn
 
 @app.route('/')
+@login_required
 def index():
     return render_template('index.html')
 
