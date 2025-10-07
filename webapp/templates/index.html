@@ -15,6 +15,11 @@
         #suggestions div { padding: 10px; cursor: pointer; background-color: #fff; border-bottom: 1px solid #ddd; }
         #suggestions div:hover { background-color: #f1f1f1; }
         #chart { width: 100%; height: 500px; }
+        #chart-container { position: relative; }
+        #actions-container { position: absolute; bottom: 80px; /* Adjust based on Plotly's x-axis height */ left: 60px; /* Adjust based on Plotly's y-axis width */ right: 20px; height: 30px; z-index: 10; pointer-events: none; }
+        .action-marker { position: absolute; bottom: 0; width: 20px; height: 20px; background-color: #e0e0e0; border: 1px solid #999; border-radius: 50%; text-align: center; line-height: 18px; font-size: 12px; font-weight: bold; cursor: pointer; pointer-events: all; }
+        .action-marker:hover .tooltip { display: block; }
+        .action-marker .tooltip { display: none; position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%); background-color: #333; color: white; padding: 5px; border-radius: 4px; font-size: 12px; white-space: nowrap; z-index: 11; margin-bottom: 5px; }
         #selected-symbols-container { margin-bottom: 15px; }
         #selected-symbols-container { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; flex-wrap: wrap; }
         #selected-symbols .symbol-tag { display: inline-flex; align-items: center; padding: 5px 10px; background-color: #e0e0e0; border-radius: 15px; margin-right: 5px; margin-bottom: 5px; font-size: 14px; }
@@ -44,7 +49,10 @@
         <button id="clear-chart" style="display:none;">Clear Chart</button>
     </div>
 
-    <div id="chart"></div>
+    <div id="chart-container">
+        <div id="chart"></div>
+        <div id="actions-container"></div>
+    </div>
 
     <hr style="margin: 40px 0;">
 
@@ -76,6 +84,7 @@
         const chartDiv = document.getElementById('chart');
 
         let plottedSymbols = [];
+        let currentChartData = [];
 
         // Debounce function to limit API calls
         function debounce(func, delay) {
@@ -92,15 +101,69 @@
             plottedSymbols.forEach(symbol => {
                 const tag = document.createElement('div');
                 tag.className = 'symbol-tag';
-                // Use the times symbol for a better 'x'
                 tag.innerHTML = `<span>${symbol}</span><button class="close-btn" data-symbol="${symbol}">&times;</button>`;
                 selectedSymbolsContainer.appendChild(tag);
             });
             clearChartBtn.style.display = plottedSymbols.length > 0 ? 'inline-block' : 'none';
         }
 
+        function renderActionMarkers() {
+            const actionsContainer = document.getElementById('actions-container');
+            actionsContainer.innerHTML = ''; // Clear existing markers
+
+            if (!chartDiv._fullLayout || !chartDiv._fullLayout.xaxis || plottedSymbols.length !== 1) {
+                return;
+            }
+
+            const xaxis = chartDiv._fullLayout.xaxis;
+            const margin = chartDiv._fullLayout.margin;
+
+            actionsContainer.style.left = `${margin.l}px`;
+            actionsContainer.style.bottom = `${margin.b}px`;
+            actionsContainer.style.width = `${xaxis._length}px`;
+
+            currentChartData.forEach(d => {
+                if (d.action_type) {
+                    const action = d.action_type.toLowerCase();
+                    let markerText = '';
+                    let tooltipText = '';
+
+                    if (action === 'dividend') {
+                        markerText = 'D';
+                        tooltipText = `Dividend: ${d.value} on ${d.date}`;
+                    } else if (action === 'split' || action === 'bonus') {
+                        markerText = 'S';
+                        tooltipText = `${d.action_type}: ${d.value} on ${d.date}`;
+                    }
+
+                    if (markerText) {
+                        const dateTimestamp = new Date(d.date).getTime();
+                        if (dateTimestamp >= xaxis.range[0] && dateTimestamp <= xaxis.range[1]) {
+                            const pixelX = xaxis.l2p(dateTimestamp);
+                            if (pixelX !== undefined) {
+                                const marker = document.createElement('div');
+                                marker.className = 'action-marker';
+                                marker.style.left = `${pixelX - 10}px`;
+                                marker.textContent = markerText;
+
+                                const tooltip = document.createElement('span');
+                                tooltip.className = 'tooltip';
+                                tooltip.textContent = tooltipText;
+
+                                marker.appendChild(tooltip);
+                                actionsContainer.appendChild(marker);
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
         // Function to fetch and display the chart(s)
         async function plotChart() {
+            document.getElementById('actions-container').innerHTML = '';
+            currentChartData = [];
+
             if (plottedSymbols.length === 0) {
                 Plotly.purge(chartDiv);
                 updateSelectedSymbolsUI();
@@ -113,10 +176,10 @@
 
             try {
                 if (plottedSymbols.length === 1) {
-                    // Single stock: Plot candlestick chart
                     const symbol = plottedSymbols[0];
                     const response = await fetch(`/api/ohlc?symbol=${symbol}`);
                     const data = await response.json();
+                    currentChartData = data;
 
                     if (data.length > 0) {
                         traces.push({
@@ -129,46 +192,14 @@
                         });
                     }
 
-                    const annotations = [];
-                    data.forEach(d => {
-                        if (d.action_type) {
-                            const action = d.action_type.toLowerCase();
-                            let text = '';
-                            if (action === 'dividend') {
-                                text = `D(${d.value})`;
-                            } else if (action === 'split' || action === 'bonus') {
-                                text = `B(${d.value})`;
-                            }
-                            if (text) {
-                                annotations.push({
-                                    x: d.date,
-                                    y: d.high,
-                                    yref: 'y',
-                                    axref: 'x',
-                                    ayref: 'y',
-                                    text: text,
-                                    showarrow: true,
-                                    arrowhead: 2,
-                                    ax: 0,
-                                    ay: -40,
-                                    font: {
-                                        color: 'purple'
-                                    }
-                                });
-                            }
-                        }
-                    });
-
                     layout = {
                         title: `${symbol} Candlestick Chart`,
                         xaxis: { title: 'Date', rangeslider: { visible: false } },
                         yaxis: { title: 'Price', range: [0, null] },
-                        dragmode: 'pan',
-                        annotations: annotations
+                        dragmode: 'pan'
                     };
 
                 } else {
-                    // Multiple stocks: Plot percentage change line chart
                     for (const symbol of plottedSymbols) {
                         const response = await fetch(`/api/ohlc?symbol=${symbol}`);
                         const data = await response.json();
@@ -194,15 +225,12 @@
                     return;
                 }
 
-                Plotly.newPlot(chartDiv, traces, layout, config);
+                Plotly.newPlot(chartDiv, traces, layout, config).then(() => {
+                    renderActionMarkers();
+                });
                 updateSelectedSymbolsUI();
 
-                // Add event listener to prevent y-axis from going below zero
-                chartDiv.on('plotly_relayout', (eventdata) => {
-                    if (eventdata['yaxis.range[0]'] < 0) {
-                        Plotly.relayout(chartDiv, { 'yaxis.range[0]': 0 });
-                    }
-                });
+                chartDiv.on('plotly_relayout', renderActionMarkers);
 
             } catch (error) {
                 console.error('Error fetching chart data:', error);
