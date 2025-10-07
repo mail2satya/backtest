@@ -1,5 +1,6 @@
 from flask import Flask, jsonify, render_template, request
 import sqlite3
+from datetime import datetime
 
 app = Flask(__name__)
 
@@ -82,14 +83,17 @@ def calculate_investment():
 
     shares = investment_amount / initial_price
     cash = 0  # To hold dividend payouts before reinvesting
+    total_dividends_received = 0
 
     # Process historical data
     for i, day in enumerate(history):
         # Data source is pre-adjusted for splits/bonuses, so we only handle dividends.
         action = day['action_type'].lower() if day['action_type'] else ''
         if action == 'dividend':
-            # Dividend: Add to cash, which is then reinvested
-            cash += shares * day['value']
+            # Calculate cash dividend and add to reinvestment pool and total tracker
+            dividend_cash = shares * day['value']
+            total_dividends_received += dividend_cash
+            cash += dividend_cash
 
         # Reinvest cash from dividends on the same day
         if cash > 0:
@@ -103,6 +107,14 @@ def calculate_investment():
     final_price = history[-1]['close']
     final_value = shares * final_price
 
+    # Calculate CAGR
+    start_dt = datetime.strptime(history[0]['date'], '%Y-%m-%d')
+    end_dt = datetime.strptime(history[-1]['date'], '%Y-%m-%d')
+    years = (end_dt - start_dt).days / 365.25
+    cagr = 0
+    if years > 0 and investment_amount > 0:
+        cagr = ((final_value / investment_amount) ** (1 / years)) - 1
+
     return jsonify({
         "initial_investment": investment_amount,
         "final_value": round(final_value, 2),
@@ -110,7 +122,8 @@ def calculate_investment():
         "end_date": history[-1]['date'],
         "start_price": history[0]['close'],
         "end_price": final_price,
-        "total_shares": round(shares, 4)
+        "total_dividends": round(total_dividends_received, 2),
+        "cagr": round(cagr * 100, 2)
     })
 
 if __name__ == '__main__':
