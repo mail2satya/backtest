@@ -85,15 +85,11 @@ def calculate_investment():
 
     # Process historical data
     for i, day in enumerate(history):
-        # Apply corporate actions, making the check case-insensitive
+        # Data source is pre-adjusted for splits/bonuses, so we only handle dividends.
         action = day['action_type'].lower() if day['action_type'] else ''
-        if action:
-            if action == 'split' or action == 'bonus':
-                # Split/Bonus: Increase the number of shares
-                shares *= day['value']
-            elif action == 'dividend':
-                # Dividend: Add to cash, will be reinvested
-                cash += shares * day['value']
+        if action == 'dividend':
+            # Dividend: Add to cash, which is then reinvested
+            cash += shares * day['value']
 
         # Reinvest cash from dividends on the same day
         if cash > 0:
