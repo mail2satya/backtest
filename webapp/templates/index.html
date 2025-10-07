@@ -73,8 +73,16 @@
             </div>
             <button type="submit">Calculate</button>
         </form>
-        <div id="calculator-result" style="margin-top: 20px;"></div>
+        <div id="calculator-result" style="margin-top: 20px;">
+            <!-- Results will be populated here by JavaScript -->
+        </div>
     </div>
+
+    <style>
+        .result-table { width: 100%; border-collapse: collapse; }
+        .result-table td { padding: 8px; border: 1px solid #ddd; }
+        .result-table td:first-child { font-weight: bold; width: 40%; }
+    </style>
 
     <script>
         const searchInput = document.getElementById('stock-search');
@@ -258,6 +266,10 @@
                     div.addEventListener('click', () => {
                         searchInput.value = ''; // Clear search input
                         suggestionsContainer.innerHTML = '';
+
+                        // Also populate the calculator's input field for convenience
+                        document.getElementById('calc-stock-symbol').value = symbol;
+
                         if (plottedSymbols.length < 3 && !plottedSymbols.includes(symbol)) {
                             plottedSymbols.push(symbol);
                             plotChart();
@@ -318,12 +330,15 @@
 
                 if (response.ok) {
                     calculatorResultDiv.innerHTML = `
-                        <p><span class="label">Initial Investment:</span> ₹${result.initial_investment.toLocaleString()}</p>
-                        <p><span class="label">Final Value:</span> ₹${result.final_value.toLocaleString()}</p>
-                        <p><span class="label">Investment Period:</span> ${result.start_date} to ${result.end_date}</p>
-                        <p><span class="label">Starting Price:</span> ₹${result.start_price.toFixed(2)}</p>
-                        <p><span class="label">Ending Price:</span> ₹${result.end_price.toFixed(2)}</p>
-                        <p><span class="label">Final Share Count (after reinvesting dividends):</span> ${result.total_shares}</p>
+                        <table class="result-table">
+                            <tr><td>Initial Investment</td><td>₹${result.initial_investment.toLocaleString()}</td></tr>
+                            <tr><td>Final Value</td><td>₹${result.final_value.toLocaleString()}</td></tr>
+                            <tr><td>Investment Period</td><td>${result.start_date} to ${result.end_date}</td></tr>
+                            <tr><td>Starting Price</td><td>₹${result.start_price.toFixed(2)}</td></tr>
+                            <tr><td>Ending Price</td><td>₹${result.end_price.toFixed(2)}</td></tr>
+                            <tr><td>Total Dividends</td><td>₹${result.total_dividends.toLocaleString()}</td></tr>
+                            <tr><td>CAGR</td><td>${result.cagr}%</td></tr>
+                        </table>
                     `;
                 } else {
                     calculatorResultDiv.innerHTML = `<p style="color: red;">Error: ${result.error}</p>`;
