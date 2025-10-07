@@ -1,5 +1,6 @@
 from flask import Flask, jsonify, render_template, request, redirect, url_for, flash
 import sqlite3
+import os
 from datetime import datetime
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
@@ -72,8 +73,6 @@ def register():
 def logout():
     logout_user()
     return redirect(url_for('login'))
-
-import os
 
 # Database setup
 # In a production environment (like Render), set the DATABASE_URL environment variable
