@@ -323,7 +323,7 @@
                         <p><span class="label">Investment Period:</span> ${result.start_date} to ${result.end_date}</p>
                         <p><span class="label">Starting Price:</span> ₹${result.start_price.toFixed(2)}</p>
                         <p><span class="label">Ending Price:</span> ₹${result.end_price.toFixed(2)}</p>
-                        <p><span class="label">Final Share Count (adjusted for splits/dividends):</span> ${result.total_shares}</p>
+                        <p><span class="label">Final Share Count (after reinvesting dividends):</span> ${result.total_shares}</p>
                     `;
                 } else {
                     calculatorResultDiv.innerHTML = `<p style="color: red;">Error: ${result.error}</p>`;
