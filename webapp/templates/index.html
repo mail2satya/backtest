@@ -132,10 +132,11 @@
                     const annotations = [];
                     data.forEach(d => {
                         if (d.action_type) {
+                            const action = d.action_type.toLowerCase();
                             let text = '';
-                            if (d.action_type === 'dividend') {
+                            if (action === 'dividend') {
                                 text = `D(${d.value})`;
-                            } else if (d.action_type === 'split' || d.action_type === 'bonus') {
+                            } else if (action === 'split' || action === 'bonus') {
                                 text = `B(${d.value})`;
                             }
                             if (text) {

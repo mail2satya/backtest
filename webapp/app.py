@@ -85,22 +85,23 @@ def calculate_investment():
 
     # Process historical data
     for i, day in enumerate(history):
-        # Apply corporate actions
-        if day['action_type']:
-            if day['action_type'] == 'split' or day['action_type'] == 'bonus':
+        # Apply corporate actions, making the check case-insensitive
+        action = day['action_type'].lower() if day['action_type'] else ''
+        if action:
+            if action == 'split' or action == 'bonus':
                 # Split/Bonus: Increase the number of shares
                 shares *= day['value']
-            elif day['action_type'] == 'dividend':
+            elif action == 'dividend':
                 # Dividend: Add to cash, will be reinvested
                 cash += shares * day['value']
 
-        # Reinvest cash from dividends
+        # Reinvest cash from dividends on the same day
         if cash > 0:
             reinvestment_price = day['close']
             if reinvestment_price > 0:
                 additional_shares = cash / reinvestment_price
                 shares += additional_shares
-                cash = 0 # Reset cash after reinvesting
+                cash = 0  # Reset cash after reinvesting
 
     # Calculate final value
     final_price = history[-1]['close']
