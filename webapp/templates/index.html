@@ -69,8 +69,12 @@
                 <input type="number" id="calc-amount" min="1" required>
             </div>
             <div class="form-group">
-                <label for="calc-date">Investment Date:</label>
-                <input type="date" id="calc-date" required>
+                <label for="calc-from-date">From Date:</label>
+                <input type="date" id="calc-from-date" required>
+            </div>
+            <div class="form-group">
+                <label for="calc-to-date">To Date:</label>
+                <input type="date" id="calc-to-date" required>
             </div>
             <button type="submit">Calculate</button>
         </form>
@@ -339,13 +343,17 @@
         const calculatorForm = document.getElementById('calculator-form');
         const calculatorResultDiv = document.getElementById('calculator-result');
 
+        // Set default 'To Date' to today
+        document.getElementById('calc-to-date').value = new Date().toISOString().split('T')[0];
+
         calculatorForm.addEventListener('submit', async (event) => {
             event.preventDefault();
             calculatorResultDiv.innerHTML = '<p>Calculating...</p>';
 
             const symbol = document.getElementById('calc-stock-symbol').value;
             const amount = document.getElementById('calc-amount').value;
-            const date = document.getElementById('calc-date').value;
+            const from_date = document.getElementById('calc-from-date').value;
+            const to_date = document.getElementById('calc-to-date').value;
 
             try {
                 const response = await fetch('/api/calculate_investment', {
@@ -353,7 +361,7 @@
                     headers: {
                         'Content-Type': 'application/json',
                     },
-                    body: JSON.stringify({ symbol, amount, date }),
+                    body: JSON.stringify({ symbol, amount, from_date, to_date }),
                 });
 
                 const result = await response.json();
