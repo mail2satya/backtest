@@ -22,6 +22,14 @@
         #selected-symbols .close-btn:hover { background: #999; }
         #clear-chart { padding: 8px 12px; border: none; background-color: #f44336; color: white; border-radius: 5px; cursor: pointer; }
         #clear-chart:hover { background-color: #d32f2f; }
+        #calculator-container .form-group { margin-bottom: 15px; }
+        #calculator-container label { display: block; margin-bottom: 5px; }
+        #calculator-container input { width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; }
+        #calculator-container button { padding: 10px 15px; border: none; background-color: #007bff; color: white; border-radius: 5px; cursor: pointer; }
+        #calculator-container button:hover { background-color: #0056b3; }
+        #calculator-result { padding: 15px; border: 1px solid #ddd; border-radius: 5px; background-color: #f9f9f9; }
+        #calculator-result p { margin: 0 0 10px; }
+        #calculator-result .label { font-weight: bold; }
     </style>
 </head>
 <body>
@@ -37,6 +45,28 @@
     </div>
 
     <div id="chart"></div>
+
+    <hr style="margin: 40px 0;">
+
+    <div id="calculator-container">
+        <h2>Investment Return Calculator</h2>
+        <form id="calculator-form">
+            <div class="form-group">
+                <label for="calc-stock-symbol">Stock Symbol:</label>
+                <input type="text" id="calc-stock-symbol" required>
+            </div>
+            <div class="form-group">
+                <label for="calc-amount">Investment Amount (INR):</label>
+                <input type="number" id="calc-amount" min="1" required>
+            </div>
+            <div class="form-group">
+                <label for="calc-date">Investment Date:</label>
+                <input type="date" id="calc-date" required>
+            </div>
+            <button type="submit">Calculate</button>
+        </form>
+        <div id="calculator-result" style="margin-top: 20px;"></div>
+    </div>
 
     <script>
         const searchInput = document.getElementById('stock-search');
@@ -90,7 +120,7 @@
 
                     if (data.length > 0) {
                         traces.push({
-                            x: data.map(d => d.timestamp),
+                            x: data.map(d => d.date),
                             open: data.map(d => d.open),
                             high: data.map(d => d.high),
                             low: data.map(d => d.low),
@@ -98,11 +128,42 @@
                             type: 'candlestick', name: symbol
                         });
                     }
+
+                    const annotations = [];
+                    data.forEach(d => {
+                        if (d.action_type) {
+                            let text = '';
+                            if (d.action_type === 'dividend') {
+                                text = `D(${d.value})`;
+                            } else if (d.action_type === 'split' || d.action_type === 'bonus') {
+                                text = `B(${d.value})`;
+                            }
+                            if (text) {
+                                annotations.push({
+                                    x: d.date,
+                                    y: d.high,
+                                    yref: 'y',
+                                    axref: 'x',
+                                    ayref: 'y',
+                                    text: text,
+                                    showarrow: true,
+                                    arrowhead: 2,
+                                    ax: 0,
+                                    ay: -40,
+                                    font: {
+                                        color: 'purple'
+                                    }
+                                });
+                            }
+                        }
+                    });
+
                     layout = {
                         title: `${symbol} Candlestick Chart`,
                         xaxis: { title: 'Date', rangeslider: { visible: false } },
                         yaxis: { title: 'Price', range: [0, null] },
-                        dragmode: 'pan'
+                        dragmode: 'pan',
+                        annotations: annotations
                     };
 
                 } else {
@@ -112,7 +173,7 @@
                         const data = await response.json();
                         if (data.length > 0) {
                             traces.push({
-                                x: data.map(d => d.timestamp),
+                                x: data.map(d => d.date),
                                 y: data.map(d => d.close),
                                 type: 'scatter', mode: 'lines', name: symbol
                             });
@@ -201,6 +262,45 @@
             }
         });
 
+        const calculatorForm = document.getElementById('calculator-form');
+        const calculatorResultDiv = document.getElementById('calculator-result');
+
+        calculatorForm.addEventListener('submit', async (event) => {
+            event.preventDefault();
+            calculatorResultDiv.innerHTML = '<p>Calculating...</p>';
+
+            const symbol = document.getElementById('calc-stock-symbol').value;
+            const amount = document.getElementById('calc-amount').value;
+            const date = document.getElementById('calc-date').value;
+
+            try {
+                const response = await fetch('/api/calculate_investment', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ symbol, amount, date }),
+                });
+
+                const result = await response.json();
+
+                if (response.ok) {
+                    calculatorResultDiv.innerHTML = `
+                        <p><span class="label">Initial Investment:</span> ₹${result.initial_investment.toLocaleString()}</p>
+                        <p><span class="label">Final Value:</span> ₹${result.final_value.toLocaleString()}</p>
+                        <p><span class="label">Investment Period:</span> ${result.start_date} to ${result.end_date}</p>
+                        <p><span class="label">Starting Price:</span> ₹${result.start_price.toFixed(2)}</p>
+                        <p><span class="label">Ending Price:</span> ₹${result.end_price.toFixed(2)}</p>
+                        <p><span class="label">Final Share Count (adjusted for splits/dividends):</span> ${result.total_shares}</p>
+                    `;
+                } else {
+                    calculatorResultDiv.innerHTML = `<p style="color: red;">Error: ${result.error}</p>`;
+                }
+            } catch (error) {
+                console.error('Calculator error:', error);
+                calculatorResultDiv.innerHTML = `<p style="color: red;">An unexpected error occurred. Please check the console.</p>`;
+            }
+        });
     </script>
 </body>
 </html>
