@@ -5,7 +5,8 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
 
 app = Flask(__name__)
-app.config['SECRET_KEY'] = 'a_very_secret_key_that_should_be_changed' # Replace with a real secret key
+# In production, set a real, secure SECRET_KEY environment variable.
+app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'a_default_fallback_secret_key_for_dev')
 
 login_manager = LoginManager()
 login_manager.init_app(app)
@@ -74,9 +75,16 @@ def logout():
 
 import os
 
-# Build a robust path to the database file
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DB_PATH = os.path.join(BASE_DIR, '..', 'merge_data.sqlite')
+# Database setup
+# In a production environment (like Render), set the DATABASE_URL environment variable
+# to the path of your persistent disk, e.g., /var/data/merge_data.sqlite
+DATABASE_URL = os.environ.get('DATABASE_URL')
+if DATABASE_URL:
+    DB_PATH = DATABASE_URL
+else:
+    # Local development uses the SQLite file in the repo
+    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+    DB_PATH = os.path.join(BASE_DIR, '..', 'merge_data.sqlite')
 
 def get_db_connection():
     """Establishes a connection to the SQLite database."""
