@@ -60,16 +60,17 @@ def calculate_investment():
     data = request.get_json()
     symbol = data.get('symbol')
     investment_amount = float(data.get('amount'))
-    start_date = data.get('date')
+    from_date = data.get('from_date')
+    to_date = data.get('to_date')
 
-    if not all([symbol, investment_amount, start_date]):
+    if not all([symbol, investment_amount, from_date, to_date]):
         return jsonify({"error": "Missing required parameters"}), 400
 
     conn = get_db_connection()
-    # Fetch all data for the stock from the start date
+    # Fetch all data for the stock within the specified date range
     history = conn.execute(
-        "SELECT date, open, high, low, close, action_type, value FROM merged_data WHERE stock = ? AND date >= ? ORDER BY date",
-        (symbol.upper(), start_date)
+        "SELECT date, open, high, low, close, action_type, value FROM merged_data WHERE stock = ? AND date BETWEEN ? AND ? ORDER BY date",
+        (symbol.upper(), from_date, to_date)
     ).fetchall()
     conn.close()
 
