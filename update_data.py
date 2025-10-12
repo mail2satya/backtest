@@ -135,6 +135,17 @@ def fetch_and_store_data(stock_symbols, start_date, db_name='fno_data.sqlite'):
     conn.close()
     print("All data fetched and stored.")
 
+def create_indexes(db_name='fno_data.sqlite'):
+    """Create indexes on the database to speed up queries."""
+    conn = sqlite3.connect(db_name)
+    cursor = conn.cursor()
+    print("Creating indexes for faster queries...")
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_ohlc_date_stock ON ohlc_data (Date, Stock);')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_actions_date_stock ON corporate_actions (Date, Stock);')
+    conn.commit()
+    conn.close()
+    print("Indexes created successfully.")
+
 def rebuild_merged_table(source_db='fno_data.sqlite', target_db='merge_data.sqlite'):
     source_conn = sqlite3.connect(source_db)
     target_conn = sqlite3.connect(target_db)
@@ -209,6 +220,9 @@ if __name__ == '__main__':
     start_date = get_last_date()
     print(f"Starting data fetch from: {start_date.strftime('%Y-%m-%d')}")
     fetch_and_store_data(symbols, start_date=start_date)
+
+    print("Creating indexes on the database...")
+    create_indexes()
 
     print("Rebuilding merged data table...")
     rebuild_merged_table()
