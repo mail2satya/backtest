@@ -159,7 +159,10 @@ def rebuild_merged_table(source_db='fno_data.sqlite', target_db='merge_data.sqli
       (
         SELECT
           substr(Date,1,10) AS Date,
-          Stock,
+          CASE
+            WHEN Stock LIKE '%.NS' THEN substr(Stock, 1, length(Stock) - 3)
+            ELSE Stock
+          END AS Stock,
           Action_Type,
           Value
         FROM source_db.corporate_actions
