@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Stock Performance Scanner</title>
+    <title>Low-Volatility Stock Scanner</title>
     <style>
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; margin: 40px auto; max-width: 900px; line-height: 1.6; color: #333; }
         h1 { text-align: center; }
@@ -29,7 +29,7 @@
         <a href="{{ url_for('scanner') }}">Performance Scanner</a>
         <a href="{{ url_for('low_volatility_scanner') }}">Low-Volatility Scanner</a>
     </div>
-    <h1>Stock Performance Scanner</h1>
+    <h1>Low-Volatility Stock Scanner</h1>
 
     <div class="form-container">
         <form id="scanner-form" method="POST">
@@ -66,6 +66,7 @@
                 <th>Stock</th>
                 <th>Final Value (INR)</th>
                 <th>CAGR (%)</th>
+                <th>Negative Years</th>
             </tr>
         </thead>
         <tbody>
@@ -75,6 +76,7 @@
                 <td>{{ result.stock }}</td>
                 <td>{{ "%.2f"|format(result.final_value) }}</td>
                 <td>{{ "%.2f"|format(result.cagr) }}</td>
+                <td>{{ result.negative_years }}</td>
             </tr>
             {% endfor %}
         </tbody>
