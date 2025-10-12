@@ -38,10 +38,16 @@
     </style>
 </head>
 <body>
-    <div style="text-align: right; margin-bottom: 10px;">
-        Logged in as: <strong>{{ current_user.username }}</strong> | <a href="{{ url_for('logout') }}">Logout</a>
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+        <div class="nav">
+            <a href="{{ url_for('index') }}">Chart Viewer</a>
+            <a href="{{ url_for('scanner') }}">Performance Scanner</a>
+        </div>
+        <div style="text-align: right;">
+            Logged in as: <strong>{{ current_user.username }}</strong> | <a href="{{ url_for('logout') }}">Logout</a>
+        </div>
     </div>
-    <h1>Stock Chart Viewer</h1>
+    <h1 style="text-align: center;">Stock Chart Viewer</h1>
     <div class="search-container">
         <input type="text" id="stock-search" placeholder="Type a stock symbol (e.g., TCS)...">
         <div id="suggestions"></div>

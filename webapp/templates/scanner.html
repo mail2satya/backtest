@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stock Performance Scanner</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; margin: 40px auto; max-width: 900px; line-height: 1.6; color: #333; }
+        h1 { text-align: center; }
+        .nav { text-align: center; margin-bottom: 20px; }
+        .nav a { margin: 0 15px; text-decoration: none; color: #007bff; font-weight: bold; }
+        .form-container { background-color: #f9f9f9; padding: 20px; border-radius: 8px; margin-bottom: 20px; }
+        .form-container form { display: flex; justify-content: space-between; align-items: flex-end; }
+        .form-container .form-group { display: flex; flex-direction: column; }
+        .form-container label { margin-bottom: 5px; font-weight: bold; }
+        .form-container input { padding: 8px; border: 1px solid #ccc; border-radius: 4px; }
+        .form-container button { padding: 10px 20px; border: none; background-color: #007bff; color: white; border-radius: 5px; cursor: pointer; }
+        .form-container button:hover { background-color: #0056b3; }
+        .results-table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        .results-table th, .results-table td { border: 1px solid #ddd; padding: 10px; text-align: left; }
+        .results-table th { background-color: #f2f2f2; }
+        .loader { text-align: center; font-size: 18px; display: none; }
+        .error { color: red; text-align: center; }
+    </style>
+</head>
+<body>
+    <div class="nav">
+        <a href="{{ url_for('index') }}">Chart Viewer</a>
+        <a href="{{ url_for('scanner') }}">Performance Scanner</a>
+    </div>
+    <h1>Stock Performance Scanner</h1>
+
+    <div class="form-container">
+        <form id="scanner-form" method="POST">
+            <div class="form-group">
+                <label for="from_date">From Date</label>
+                <input type="date" id="from_date" name="from_date" value="{{ request.form.from_date }}" required>
+            </div>
+            <div class="form-group">
+                <label for="to_date">To Date</label>
+                <input type="date" id="to_date" name="to_date" value="{{ request.form.to_date }}" required>
+            </div>
+            <div class="form-group">
+                <label for="investment_amount">Initial Investment (INR)</label>
+                <input type="number" id="investment_amount" name="investment_amount" value="{{ request.form.investment_amount or 10000 }}" required>
+            </div>
+            <button type="submit">Scan</button>
+        </form>
+    </div>
+
+    <div id="loader" class="loader">
+        <p>Calculating... This might take a few moments.</p>
+    </div>
+
+    {% if error %}
+        <p class="error">{{ error }}</p>
+    {% endif %}
+
+    {% if results %}
+    <h2>Scan Results</h2>
+    <table class="results-table">
+        <thead>
+            <tr>
+                <th>Rank</th>
+                <th>Stock</th>
+                <th>Final Value (INR)</th>
+                <th>CAGR (%)</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for result in results %}
+            <tr>
+                <td>{{ result.rank }}</td>
+                <td>{{ result.stock }}</td>
+                <td>{{ "%.2f"|format(result.final_value) }}</td>
+                <td>{{ "%.2f"|format(result.cagr) }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% endif %}
+
+    <script>
+        document.getElementById('scanner-form').addEventListener('submit', function() {
+            document.getElementById('loader').style.display = 'block';
+        });
+        // Set default 'To Date' to today
+        if (!document.getElementById('to_date').value) {
+            document.getElementById('to_date').value = new Date().toISOString().split('T')[0];
+        }
+    </script>
+</body>
+</html>
