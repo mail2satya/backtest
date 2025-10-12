@@ -280,5 +280,103 @@ def calculate_stock_performance(investment_amount, from_date, to_date):
 
     return sorted_results
 
+@app.route('/low-volatility-scanner', methods=['GET', 'POST'])
+@login_required
+def low_volatility_scanner():
+    if request.method == 'POST':
+        from_date = request.form.get('from_date')
+        to_date = request.form.get('to_date')
+        investment_amount = float(request.form.get('investment_amount', 10000))
+
+        if not from_date or not to_date:
+            return render_template('low_volatility_scanner.html', error="Please select both a start and end date.")
+
+        results = calculate_low_volatility_performance(investment_amount, from_date, to_date)
+        return render_template('low_volatility_scanner.html', results=results)
+
+    return render_template('low_volatility_scanner.html')
+
+def calculate_low_volatility_performance(investment_amount, from_date, to_date):
+    """
+    Calculates stock performance, including CAGR and the number of negative-return years.
+    """
+    conn = get_db_connection()
+    stocks = conn.execute("SELECT DISTINCT stock FROM merged_data").fetchall()
+
+    results = []
+
+    for stock_row in stocks:
+        symbol = stock_row['stock']
+        history = conn.execute(
+            "SELECT date, close, action_type, value FROM merged_data WHERE stock = ? AND date BETWEEN ? AND ? ORDER BY date",
+            (symbol, from_date, to_date)
+        ).fetchall()
+
+        if not history or not history[0]['close']:
+            continue
+
+        # --- Standard Performance Calculation ---
+        initial_price = history[0]['close']
+        shares = investment_amount / initial_price
+        cash = 0
+
+        for day in history:
+            action = day['action_type'].lower() if day['action_type'] else ''
+            if action == 'dividend' and day['value'] > 0:
+                cash += shares * day['value']
+            if cash > 0 and day['close'] > 0:
+                shares += cash / day['close']
+                cash = 0
+
+        final_price = history[-1]['close']
+        final_value = shares * final_price
+
+        start_dt = datetime.strptime(history[0]['date'], '%Y-%m-%d')
+        end_dt = datetime.strptime(history[-1]['date'], '%Y-%m-%d')
+        years = (end_dt - start_dt).days / 365.25
+        cagr = ((final_value / investment_amount) ** (1 / years)) - 1 if years > 0 and investment_amount > 0 else 0
+
+        # --- Negative Years Calculation ---
+        negative_years = 0
+
+        # Create a dictionary for quick price lookups by date
+        prices = {datetime.strptime(day['date'], '%Y-%m-%d').date(): day['close'] for day in history}
+
+        # Determine the range of full years to check
+        start_year = start_dt.year + 1
+        end_year = end_dt.year
+
+        for year in range(start_year, end_year):
+            year_start_date = datetime(year, 1, 1).date()
+            year_end_date = datetime(year, 12, 31).date()
+
+            # Find the first and last available trading days for the year
+            start_price_date = min((d for d in prices if d >= year_start_date), default=None)
+            end_price_date = max((d for d in prices if d <= year_end_date), default=None)
+
+            if start_price_date and end_price_date and start_price_date < end_price_date:
+                year_start_price = prices[start_price_date]
+                year_end_price = prices[end_price_date]
+
+                if year_end_price < year_start_price:
+                    negative_years += 1
+
+        results.append({
+            "stock": symbol,
+            "final_value": final_value,
+            "cagr": cagr * 100,
+            "negative_years": negative_years
+        })
+
+    conn.close()
+
+    # Sort by CAGR (desc) and then by negative years (asc)
+    sorted_results = sorted(results, key=lambda x: (-x['cagr'], x['negative_years']))
+
+    for i, result in enumerate(sorted_results):
+        result['rank'] = i + 1
+
+    return sorted_results
+
 if __name__ == '__main__':
     app.run(debug=True, port=5001)
