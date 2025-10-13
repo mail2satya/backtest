@@ -44,7 +44,7 @@ def robots_txt():
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if current_user.is_authenticated:
-        return redirect(url_for('index'))
+        return redirect(url_for('dashboard'))
     if request.method == 'POST':
         username = request.form['username']
         password = request.form['password']
@@ -54,10 +54,15 @@ def login():
         user = User(id=user_data['id'], username=user_data['username'], password_hash=user_data['password_hash']) if user_data else None
         if user and check_password_hash(user.password_hash, password):
             login_user(user)
-            return redirect(url_for('index'))
+            return redirect(url_for('dashboard'))
         else:
             flash('Invalid username or password')
     return render_template('login.html')
+
+@app.route('/dashboard')
+@login_required
+def dashboard():
+    return render_template('dashboard.html')
 
 @app.route('/register', methods=['GET', 'POST'])
 def register():
@@ -361,34 +366,33 @@ def calculate_low_volatility_performance(investment_amount, from_date, to_date):
         yearly_performance = []
         prices = {datetime.strptime(day['date'], '%Y-%m-%d').date(): day['close'] for day in history}
 
-        # Process years from the first full year up to and including the last year.
-        for year in range(start_dt.year + 1, end_dt.year + 1):
-            # Define the start and end of the period to check for this year
-            period_start = datetime(year, 1, 1).date()
-            period_end = min(end_dt.date(), datetime(year, 12, 31).date())
+        all_years = sorted(list(set(d.year for d in prices.keys())))
 
-            # Find the first and last available trading days within this period
-            start_price_date = min((d for d in prices if d >= period_start), default=None)
-            end_price_date = max((d for d in prices if d <= period_end), default=None)
+        for year in all_years:
+            year_dates = sorted([d for d in prices.keys() if d.year == year])
 
-            # Ensure we have valid start/end points and they are not the same day
-            if start_price_date and end_price_date and start_price_date < end_price_date:
-                year_start_price = prices[start_price_date]
-                year_end_price = prices[end_price_date]
+            if not year_dates or len(year_dates) < 2:
+                continue
 
-                if year_start_price > 0:
-                    return_pct = ((year_end_price / year_start_price) - 1) * 100
+            start_price_date = year_dates[0]
+            end_price_date = year_dates[-1]
 
-                    year_label = str(year)
-                    # Add (YTD) label if it's the last year and the period doesn't end on Dec 31
-                    if year == end_dt.year and not (end_dt.month == 12 and end_dt.day == 31):
-                        year_label = f"{year} (YTD)"
+            year_start_price = prices[start_price_date]
+            year_end_price = prices[end_price_date]
 
-                    yearly_performance.append({
-                        "year": year_label,
-                        "is_positive": return_pct >= 0,
-                        "return_pct": f"{return_pct:.2f}"
-                    })
+            if year_start_price > 0:
+                return_pct = ((year_end_price / year_start_price) - 1) * 100
+
+                year_label = str(year)
+                # Add (YTD) label if it's the current year and not a full year
+                if year == end_dt.year and not (end_dt.month == 12 and end_dt.day == 31):
+                     year_label = f"{year} (YTD)"
+
+                yearly_performance.append({
+                    "year": year_label,
+                    "is_positive": return_pct >= 0,
+                    "return_pct": f"{return_pct:.2f}"
+                })
 
         negative_years = sum(1 for p in yearly_performance if not p['is_positive'])
 
