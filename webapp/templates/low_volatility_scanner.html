@@ -21,6 +21,12 @@
         .results-table th { background-color: #f2f2f2; }
         .loader { text-align: center; font-size: 18px; display: none; }
         .error { color: red; text-align: center; }
+        .dot-container { display: flex; flex-wrap: wrap; align-items: center; }
+        .dot { height: 20px; width: 20px; border-radius: 50%; display: inline-block; margin: 2px; position: relative; }
+        .dot.green { background-color: #28a745; }
+        .dot.red { background-color: #dc3545; }
+        .dot .tooltiptext { visibility: hidden; width: 60px; background-color: #555; color: #fff; text-align: center; border-radius: 6px; padding: 5px 0; position: absolute; z-index: 1; bottom: 125%; left: 50%; margin-left: -30px; opacity: 0; transition: opacity 0.3s; }
+        .dot:hover .tooltiptext { visibility: visible; opacity: 1; }
     </style>
 </head>
 <body>
@@ -66,7 +72,7 @@
                 <th>Stock</th>
                 <th>Final Value (INR)</th>
                 <th>CAGR (%)</th>
-                <th>Negative Years</th>
+                <th>Yearly Performance</th>
             </tr>
         </thead>
         <tbody>
@@ -76,7 +82,15 @@
                 <td>{{ result.stock }}</td>
                 <td>{{ "%.2f"|format(result.final_value) }}</td>
                 <td>{{ "%.2f"|format(result.cagr) }}</td>
-                <td>{{ result.negative_years }}</td>
+                <td>
+                    <div class="dot-container">
+                        {% for year_data in result.yearly_performance %}
+                            <span class="dot {{ 'green' if year_data.is_positive else 'red' }}">
+                                <span class="tooltiptext">{{ year_data.year }}</span>
+                            </span>
+                        {% endfor %}
+                    </div>
+                </td>
             </tr>
             {% endfor %}
         </tbody>

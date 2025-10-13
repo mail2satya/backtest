@@ -336,13 +336,10 @@ def calculate_low_volatility_performance(investment_amount, from_date, to_date):
         years = (end_dt - start_dt).days / 365.25
         cagr = ((final_value / investment_amount) ** (1 / years)) - 1 if years > 0 and investment_amount > 0 else 0
 
-        # --- Negative Years Calculation ---
-        negative_years = 0
-
-        # Create a dictionary for quick price lookups by date
+        # --- Yearly Performance Calculation ---
+        yearly_performance = []
         prices = {datetime.strptime(day['date'], '%Y-%m-%d').date(): day['close'] for day in history}
 
-        # Determine the range of full years to check
         start_year = start_dt.year + 1
         end_year = end_dt.year
 
@@ -350,22 +347,23 @@ def calculate_low_volatility_performance(investment_amount, from_date, to_date):
             year_start_date = datetime(year, 1, 1).date()
             year_end_date = datetime(year, 12, 31).date()
 
-            # Find the first and last available trading days for the year
             start_price_date = min((d for d in prices if d >= year_start_date), default=None)
             end_price_date = max((d for d in prices if d <= year_end_date), default=None)
 
             if start_price_date and end_price_date and start_price_date < end_price_date:
                 year_start_price = prices[start_price_date]
                 year_end_price = prices[end_price_date]
+                is_positive = year_end_price >= year_start_price
+                yearly_performance.append({"year": year, "is_positive": is_positive})
 
-                if year_end_price < year_start_price:
-                    negative_years += 1
+        negative_years = sum(1 for p in yearly_performance if not p['is_positive'])
 
         results.append({
             "stock": symbol,
             "final_value": final_value,
             "cagr": cagr * 100,
-            "negative_years": negative_years
+            "negative_years": negative_years,
+            "yearly_performance": yearly_performance
         })
 
     conn.close()
