@@ -27,14 +27,7 @@
         #selected-symbols .close-btn:hover { background: #999; }
         #clear-chart { padding: 8px 12px; border: none; background-color: #f44336; color: white; border-radius: 5px; cursor: pointer; }
         #clear-chart:hover { background-color: #d32f2f; }
-        #calculator-container .form-group { margin-bottom: 15px; }
-        #calculator-container label { display: block; margin-bottom: 5px; }
-        #calculator-container input { width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; }
-        #calculator-container button { padding: 10px 15px; border: none; background-color: #007bff; color: white; border-radius: 5px; cursor: pointer; }
-        #calculator-container button:hover { background-color: #0056b3; }
-        #calculator-result { padding: 15px; border: 1px solid #ddd; border-radius: 5px; background-color: #f9f9f9; }
-        #calculator-result p { margin: 0 0 10px; }
-        #calculator-result .label { font-weight: bold; }
+        .nav a { margin: 0 15px; text-decoration: none; color: #007bff; font-weight: bold; }
     </style>
 </head>
 <body>
@@ -43,6 +36,7 @@
             <a href="{{ url_for('index') }}">Chart Viewer</a>
             <a href="{{ url_for('scanner') }}">Performance Scanner</a>
             <a href="{{ url_for('low_volatility_scanner') }}">Low-Volatility Scanner</a>
+            <a href="{{ url_for('calculator') }}">Calculator</a>
         </div>
         <div style="text-align: right;">
             Logged in as: <strong>{{ current_user.username }}</strong> | <a href="{{ url_for('logout') }}">Logout</a>
@@ -63,41 +57,6 @@
         <div id="chart"></div>
         <div id="actions-container"></div>
     </div>
-
-    <hr style="margin: 40px 0;">
-
-    <div id="calculator-container">
-        <h2>Investment Return Calculator</h2>
-        <form id="calculator-form">
-            <div class="form-group search-container">
-                <label for="calc-stock-symbol">Stock Symbol:</label>
-                <input type="text" id="calc-stock-symbol" required autocomplete="off">
-                <div id="calc-suggestions" class="suggestions-list"></div>
-            </div>
-            <div class="form-group">
-                <label for="calc-amount">Investment Amount (INR):</label>
-                <input type="number" id="calc-amount" min="1" required>
-            </div>
-            <div class="form-group">
-                <label for="calc-from-date">From Date:</label>
-                <input type="date" id="calc-from-date" required>
-            </div>
-            <div class="form-group">
-                <label for="calc-to-date">To Date:</label>
-                <input type="date" id="calc-to-date" required>
-            </div>
-            <button type="submit">Calculate</button>
-        </form>
-        <div id="calculator-result" style="margin-top: 20px;">
-            <!-- Results will be populated here by JavaScript -->
-        </div>
-    </div>
-
-    <style>
-        .result-table { width: 100%; border-collapse: collapse; }
-        .result-table td { padding: 8px; border: 1px solid #ddd; }
-        .result-table td:first-child { font-weight: bold; width: 40%; }
-    </style>
 
     <script>
         const searchInput = document.getElementById('stock-search');
@@ -312,88 +271,9 @@
             }
         });
 
-        const calcSearchInput = document.getElementById('calc-stock-symbol');
-        const calcSuggestionsContainer = document.getElementById('calc-suggestions');
-
         document.addEventListener('click', (event) => {
             if (!suggestionsContainer.contains(event.target) && event.target !== searchInput) {
                 suggestionsContainer.innerHTML = '';
-            }
-            if (calcSuggestionsContainer && !calcSuggestionsContainer.contains(event.target) && event.target !== calcSearchInput) {
-                calcSuggestionsContainer.innerHTML = '';
-            }
-        });
-
-        const onCalcSearchInput = async (event) => {
-            const query = event.target.value;
-            calcSuggestionsContainer.innerHTML = '';
-
-            if (query.length < 2) return;
-
-            try {
-                const response = await fetch(`/api/search?q=${query}`);
-                const suggestions = await response.json();
-
-                suggestions.forEach(symbol => {
-                    const div = document.createElement('div');
-                    div.textContent = symbol;
-                    div.addEventListener('click', () => {
-                        calcSearchInput.value = symbol;
-                        calcSuggestionsContainer.innerHTML = '';
-                    });
-                    calcSuggestionsContainer.appendChild(div);
-                });
-            } catch (error) {
-                console.error('Error fetching calculator suggestions:', error);
-            }
-        };
-
-        calcSearchInput.addEventListener('input', debounce(onCalcSearchInput, 300));
-
-        const calculatorForm = document.getElementById('calculator-form');
-        const calculatorResultDiv = document.getElementById('calculator-result');
-
-        // Set default 'To Date' to today
-        document.getElementById('calc-to-date').value = new Date().toISOString().split('T')[0];
-
-        calculatorForm.addEventListener('submit', async (event) => {
-            event.preventDefault();
-            calculatorResultDiv.innerHTML = '<p>Calculating...</p>';
-
-            const symbol = document.getElementById('calc-stock-symbol').value;
-            const amount = document.getElementById('calc-amount').value;
-            const from_date = document.getElementById('calc-from-date').value;
-            const to_date = document.getElementById('calc-to-date').value;
-
-            try {
-                const response = await fetch('/api/calculate_investment', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({ symbol, amount, from_date, to_date }),
-                });
-
-                const result = await response.json();
-
-                if (response.ok) {
-                    calculatorResultDiv.innerHTML = `
-                        <table class="result-table">
-                            <tr><td>Initial Investment</td><td>₹${result.initial_investment.toLocaleString()}</td></tr>
-                            <tr><td>Final Value</td><td>₹${result.final_value.toLocaleString()}</td></tr>
-                            <tr><td>Investment Period</td><td>${result.start_date} to ${result.end_date}</td></tr>
-                            <tr><td>Starting Price</td><td>₹${result.start_price.toFixed(2)}</td></tr>
-                            <tr><td>Ending Price</td><td>₹${result.end_price.toFixed(2)}</td></tr>
-                            <tr><td>Total Dividends</td><td>₹${result.total_dividends.toLocaleString()}</td></tr>
-                            <tr><td>CAGR</td><td>${result.cagr}%</td></tr>
-                        </table>
-                    `;
-                } else {
-                    calculatorResultDiv.innerHTML = `<p style="color: red;">Error: ${result.error}</p>`;
-                }
-            } catch (error) {
-                console.error('Calculator error:', error);
-                calculatorResultDiv.innerHTML = `<p style="color: red;">An unexpected error occurred. Please check the console.</p>`;
             }
         });
     </script>
