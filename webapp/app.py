@@ -1,13 +1,22 @@
-from flask import Flask, jsonify, render_template, request, redirect, url_for, flash
+from flask import Flask, jsonify, render_template, request, redirect, url_for, flash, send_from_directory
 import sqlite3
 import os
 from datetime import datetime
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 
 app = Flask(__name__)
 # In production, set a real, secure SECRET_KEY environment variable.
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'a_default_fallback_secret_key_for_dev')
+
+# Initialize Flask-Limiter
+limiter = Limiter(
+    get_remote_address,
+    app=app,
+    default_limits=["200 per day", "50 per hour"]
+)
 
 login_manager = LoginManager()
 login_manager.init_app(app)
@@ -27,6 +36,10 @@ def load_user(user_id):
     if user_data:
         return User(id=user_data['id'], username=user_data['username'], password_hash=user_data['password_hash'])
     return None
+
+@app.route('/robots.txt')
+def robots_txt():
+    return send_from_directory(os.path.join(app.root_path, '..'), 'robots.txt')
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
@@ -96,7 +109,13 @@ def get_db_connection():
 def index():
     return render_template('index.html')
 
+@app.route('/calculator')
+@login_required
+def calculator():
+    return render_template('calculator.html')
+
 @app.route('/api/search')
+@limiter.limit("100 per hour")
 def search():
     query = request.args.get('q', '')
     if not query or len(query) < 2:
@@ -113,6 +132,7 @@ def search():
     return jsonify([row['stock'] for row in symbols])
 
 @app.route('/api/ohlc')
+@limiter.limit("60 per minute")
 def ohlc():
     symbol = request.args.get('symbol', '')
     if not symbol:
@@ -132,6 +152,7 @@ def ohlc():
     return jsonify(data)
 
 @app.route('/api/calculate_investment', methods=['POST'])
+@limiter.limit("30 per minute")
 def calculate_investment():
     data = request.get_json()
     symbol = data.get('symbol')

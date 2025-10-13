@@ -1,0 +1,6 @@
+User-agent: *
+Disallow: /api/
+Disallow: /scanner
+Disallow: /low-volatility-scanner
+Disallow: /calculator
+Crawl-delay: 10
