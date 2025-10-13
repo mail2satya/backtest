@@ -25,12 +25,23 @@
         .dot { height: 16px; width: 16px; border-radius: 50%; display: inline-block; margin: 2px; position: relative; border: 1px solid rgba(0,0,0,0.2); box-shadow: 0 1px 2px rgba(0,0,0,0.2); }
         .dot.green { background: radial-gradient(circle at 50% 30%, #a8e063, #56ab2f); }
         .dot.red { background: radial-gradient(circle at 50% 30%, #ff7e5f, #feb47b); }
+        .dot {
+            height: 16px;
+            width: 16px;
+            border-radius: 50%;
+            display: inline-block;
+            margin: 2px;
+            position: relative;
+            border: 1px solid rgba(0,0,0,0.2);
+            box-shadow: 0 1px 2px rgba(0,0,0,0.2), inset 0 1px 0 rgba(255,255,255,0.5);
+        }
         .dot .tooltiptext { visibility: hidden; min-width: 100px; background-color: #333; color: #fff; text-align: center; border-radius: 6px; padding: 5px 8px; position: absolute; z-index: 1; bottom: 150%; left: 50%; margin-left: -58px; opacity: 0; transition: opacity 0.3s; white-space: nowrap; }
         .dot:hover .tooltiptext { visibility: visible; opacity: 1; }
     </style>
 </head>
 <body>
     <div class="nav">
+        <a href="{{ url_for('dashboard') }}">Dashboard</a>
         <a href="{{ url_for('index') }}">Chart Viewer</a>
         <a href="{{ url_for('scanner') }}">Performance Scanner</a>
         <a href="{{ url_for('low_volatility_scanner') }}">Low-Volatility Scanner</a>
