@@ -340,21 +340,34 @@ def calculate_low_volatility_performance(investment_amount, from_date, to_date):
         yearly_performance = []
         prices = {datetime.strptime(day['date'], '%Y-%m-%d').date(): day['close'] for day in history}
 
-        start_year = start_dt.year + 1
-        end_year = end_dt.year
+        # Process years from the first full year up to and including the last year.
+        for year in range(start_dt.year + 1, end_dt.year + 1):
+            # Define the start and end of the period to check for this year
+            period_start = datetime(year, 1, 1).date()
+            period_end = min(end_dt.date(), datetime(year, 12, 31).date())
 
-        for year in range(start_year, end_year):
-            year_start_date = datetime(year, 1, 1).date()
-            year_end_date = datetime(year, 12, 31).date()
+            # Find the first and last available trading days within this period
+            start_price_date = min((d for d in prices if d >= period_start), default=None)
+            end_price_date = max((d for d in prices if d <= period_end), default=None)
 
-            start_price_date = min((d for d in prices if d >= year_start_date), default=None)
-            end_price_date = max((d for d in prices if d <= year_end_date), default=None)
-
+            # Ensure we have valid start/end points and they are not the same day
             if start_price_date and end_price_date and start_price_date < end_price_date:
                 year_start_price = prices[start_price_date]
                 year_end_price = prices[end_price_date]
-                is_positive = year_end_price >= year_start_price
-                yearly_performance.append({"year": year, "is_positive": is_positive})
+
+                if year_start_price > 0:
+                    return_pct = ((year_end_price / year_start_price) - 1) * 100
+
+                    year_label = str(year)
+                    # Add (YTD) label if it's the last year and the period doesn't end on Dec 31
+                    if year == end_dt.year and not (end_dt.month == 12 and end_dt.day == 31):
+                        year_label = f"{year} (YTD)"
+
+                    yearly_performance.append({
+                        "year": year_label,
+                        "is_positive": return_pct >= 0,
+                        "return_pct": f"{return_pct:.2f}"
+                    })
 
         negative_years = sum(1 for p in yearly_performance if not p['is_positive'])
 

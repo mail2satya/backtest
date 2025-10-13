@@ -22,10 +22,10 @@
         .loader { text-align: center; font-size: 18px; display: none; }
         .error { color: red; text-align: center; }
         .dot-container { display: flex; flex-wrap: wrap; align-items: center; }
-        .dot { height: 20px; width: 20px; border-radius: 50%; display: inline-block; margin: 2px; position: relative; }
-        .dot.green { background-color: #28a745; }
-        .dot.red { background-color: #dc3545; }
-        .dot .tooltiptext { visibility: hidden; width: 60px; background-color: #555; color: #fff; text-align: center; border-radius: 6px; padding: 5px 0; position: absolute; z-index: 1; bottom: 125%; left: 50%; margin-left: -30px; opacity: 0; transition: opacity 0.3s; }
+        .dot { height: 16px; width: 16px; border-radius: 50%; display: inline-block; margin: 2px; position: relative; border: 1px solid rgba(0,0,0,0.2); box-shadow: 0 1px 2px rgba(0,0,0,0.2); }
+        .dot.green { background: radial-gradient(circle at 50% 30%, #a8e063, #56ab2f); }
+        .dot.red { background: radial-gradient(circle at 50% 30%, #ff7e5f, #feb47b); }
+        .dot .tooltiptext { visibility: hidden; min-width: 100px; background-color: #333; color: #fff; text-align: center; border-radius: 6px; padding: 5px 8px; position: absolute; z-index: 1; bottom: 150%; left: 50%; margin-left: -58px; opacity: 0; transition: opacity 0.3s; white-space: nowrap; }
         .dot:hover .tooltiptext { visibility: visible; opacity: 1; }
     </style>
 </head>
@@ -86,7 +86,7 @@
                     <div class="dot-container">
                         {% for year_data in result.yearly_performance %}
                             <span class="dot {{ 'green' if year_data.is_positive else 'red' }}">
-                                <span class="tooltiptext">{{ year_data.year }}</span>
+                                <span class="tooltiptext">{{ year_data.year }}: {{ year_data.return_pct }}%</span>
                             </span>
                         {% endfor %}
                     </div>
