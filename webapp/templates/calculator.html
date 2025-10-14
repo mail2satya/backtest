@@ -20,25 +20,37 @@
         #calculator-result { padding: 15px; border: 1px solid #ddd; border-radius: 5px; background-color: #f9f9f9; }
         #calculator-result p { margin: 0 0 10px; }
         #calculator-result .label { font-weight: bold; }
-        .nav { text-align: center; margin-bottom: 20px; }
-        .nav a { margin: 0 15px; text-decoration: none; color: #007bff; font-weight: bold; }
+        .nav {
+            display: flex;
+            gap: 20px;
+            background-color: #00aaff;
+            padding: 10px 20px;
+            border-top: 5px solid #0077cc;
+        }
+        .nav a {
+            text-decoration: none;
+            color: #ffffff;
+            font-weight: bold;
+            transition: color 0.3s;
+        }
+        .nav a:hover {
+            color: #e0e0e0;
+        }
         .result-table { width: 100%; border-collapse: collapse; }
         .result-table td { padding: 8px; border: 1px solid #ddd; }
         .result-table td:first-child { font-weight: bold; width: 40%; }
     </style>
 </head>
 <body>
-    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-        <div class="nav">
-            <a href="{{ url_for('dashboard') }}">Dashboard</a>
-            <a href="{{ url_for('index') }}">Chart Viewer</a>
-            <a href="{{ url_for('scanner') }}">Performance Scanner</a>
-            <a href="{{ url_for('low_volatility_scanner') }}">Low-Volatility Scanner</a>
-            <a href="{{ url_for('calculator') }}">Calculator</a>
-        </div>
-        <div style="text-align: right;">
-            Logged in as: <strong>{{ current_user.username }}</strong> | <a href="{{ url_for('logout') }}">Logout</a>
-        </div>
+    <div class="nav">
+        <a href="{{ url_for('dashboard') }}">Dashboard</a>
+        <a href="{{ url_for('index') }}">Charts</a>
+        <a href="{{ url_for('scanner') }}">Performance Scanner</a>
+        <a href="{{ url_for('low_volatility_scanner') }}">Volatility</a>
+        <a href="{{ url_for('calculator') }}">Calculator</a>
+    </div>
+    <div style="text-align: right; padding: 10px;">
+        Logged in as: <strong>{{ current_user.username }}</strong> | <a href="{{ url_for('logout') }}">Logout</a>
     </div>
     <h1>Investment Return Calculator</h1>
     <div id="calculator-container">

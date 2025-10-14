@@ -3,12 +3,27 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Low-Volatility Stock Scanner</title>
+    <title>Volatility Scanner</title>
     <style>
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; margin: 40px auto; max-width: 900px; line-height: 1.6; color: #333; }
         h1 { text-align: center; }
         .nav { text-align: center; margin-bottom: 20px; }
-        .nav a { margin: 0 15px; text-decoration: none; color: #007bff; font-weight: bold; }
+        .nav {
+            display: flex;
+            gap: 20px;
+            background-color: #00aaff;
+            padding: 10px 20px;
+            border-top: 5px solid #0077cc;
+        }
+        .nav a {
+            text-decoration: none;
+            color: #ffffff;
+            font-weight: bold;
+            transition: color 0.3s;
+        }
+        .nav a:hover {
+            color: #e0e0e0;
+        }
         .form-container { background-color: #f9f9f9; padding: 20px; border-radius: 8px; margin-bottom: 20px; }
         .form-container form { display: flex; justify-content: space-between; align-items: flex-end; }
         .form-container .form-group { display: flex; flex-direction: column; }
@@ -21,33 +36,17 @@
         .results-table th { background-color: #f2f2f2; }
         .loader { text-align: center; font-size: 18px; display: none; }
         .error { color: red; text-align: center; }
-        .dot-container { display: flex; flex-wrap: wrap; align-items: center; }
-        .dot { height: 16px; width: 16px; border-radius: 50%; display: inline-block; margin: 2px; position: relative; border: 1px solid rgba(0,0,0,0.2); box-shadow: 0 1px 2px rgba(0,0,0,0.2); }
-        .dot.green { background: radial-gradient(circle at 50% 30%, #a8e063, #56ab2f); }
-        .dot.red { background: radial-gradient(circle at 50% 30%, #ff7e5f, #feb47b); }
-        .dot {
-            height: 16px;
-            width: 16px;
-            border-radius: 50%;
-            display: inline-block;
-            margin: 2px;
-            position: relative;
-            border: 1px solid rgba(0,0,0,0.2);
-            box-shadow: 0 1px 2px rgba(0,0,0,0.2), inset 0 1px 0 rgba(255,255,255,0.5);
-        }
-        .dot .tooltiptext { visibility: hidden; min-width: 100px; background-color: #333; color: #fff; text-align: center; border-radius: 6px; padding: 5px 8px; position: absolute; z-index: 1; bottom: 150%; left: 50%; margin-left: -58px; opacity: 0; transition: opacity 0.3s; white-space: nowrap; }
-        .dot:hover .tooltiptext { visibility: visible; opacity: 1; }
     </style>
 </head>
 <body>
     <div class="nav">
         <a href="{{ url_for('dashboard') }}">Dashboard</a>
-        <a href="{{ url_for('index') }}">Chart Viewer</a>
+        <a href="{{ url_for('index') }}">Charts</a>
         <a href="{{ url_for('scanner') }}">Performance Scanner</a>
-        <a href="{{ url_for('low_volatility_scanner') }}">Low-Volatility Scanner</a>
+        <a href="{{ url_for('low_volatility_scanner') }}">Volatility</a>
         <a href="{{ url_for('calculator') }}">Calculator</a>
     </div>
-    <h1>Low-Volatility Stock Scanner</h1>
+    <h1>Volatility Scanner</h1>
 
     <div class="form-container">
         <form id="scanner-form" method="POST">
@@ -84,7 +83,7 @@
                 <th>Stock</th>
                 <th>Final Value (INR)</th>
                 <th>CAGR (%)</th>
-                <th>Yearly Performance</th>
+                <th>Negative Years</th>
             </tr>
         </thead>
         <tbody>
@@ -94,15 +93,7 @@
                 <td>{{ result.stock }}</td>
                 <td>{{ "%.2f"|format(result.final_value) }}</td>
                 <td>{{ "%.2f"|format(result.cagr) }}</td>
-                <td>
-                    <div class="dot-container">
-                        {% for year_data in result.yearly_performance %}
-                            <span class="dot {{ 'green' if year_data.is_positive else 'red' }}">
-                                <span class="tooltiptext">{{ year_data.year }}: {{ year_data.return_pct }}%</span>
-                            </span>
-                        {% endfor %}
-                    </div>
-                </td>
+                <td>{{ result.negative_years }}</td>
             </tr>
             {% endfor %}
         </tbody>
