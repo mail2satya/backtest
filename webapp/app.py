@@ -1,22 +1,13 @@
-from flask import Flask, jsonify, render_template, request, redirect, url_for, flash, send_from_directory
+from flask import Flask, jsonify, render_template, request, redirect, url_for, flash
 import sqlite3
 import os
 from datetime import datetime
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
-from flask_limiter import Limiter
-from flask_limiter.util import get_remote_address
 
 app = Flask(__name__)
 # In production, set a real, secure SECRET_KEY environment variable.
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'a_default_fallback_secret_key_for_dev')
-
-# Initialize Flask-Limiter
-limiter = Limiter(
-    get_remote_address,
-    app=app,
-    default_limits=["200 per day", "50 per hour"]
-)
 
 login_manager = LoginManager()
 login_manager.init_app(app)
@@ -37,14 +28,15 @@ def load_user(user_id):
         return User(id=user_data['id'], username=user_data['username'], password_hash=user_data['password_hash'])
     return None
 
-@app.route('/robots.txt')
-def robots_txt():
-    return send_from_directory(os.path.join(app.root_path, '..'), 'robots.txt')
+@app.route('/dashboard')
+@login_required
+def dashboard():
+    return render_template('dashboard.html')
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if current_user.is_authenticated:
-        return redirect(url_for('dashboard'))
+        return redirect(url_for('index'))
     if request.method == 'POST':
         username = request.form['username']
         password = request.form['password']
@@ -54,15 +46,10 @@ def login():
         user = User(id=user_data['id'], username=user_data['username'], password_hash=user_data['password_hash']) if user_data else None
         if user and check_password_hash(user.password_hash, password):
             login_user(user)
-            return redirect(url_for('dashboard'))
+            return redirect(url_for('index'))
         else:
             flash('Invalid username or password')
     return render_template('login.html')
-
-@app.route('/dashboard')
-@login_required
-def dashboard():
-    return render_template('dashboard.html')
 
 @app.route('/register', methods=['GET', 'POST'])
 def register():
@@ -120,7 +107,6 @@ def calculator():
     return render_template('calculator.html')
 
 @app.route('/api/search')
-@limiter.limit("100 per hour")
 def search():
     query = request.args.get('q', '')
     if not query or len(query) < 2:
@@ -137,7 +123,6 @@ def search():
     return jsonify([row['stock'] for row in symbols])
 
 @app.route('/api/ohlc')
-@limiter.limit("60 per minute")
 def ohlc():
     symbol = request.args.get('symbol', '')
     if not symbol:
@@ -157,7 +142,6 @@ def ohlc():
     return jsonify(data)
 
 @app.route('/api/calculate_investment', methods=['POST'])
-@limiter.limit("30 per minute")
 def calculate_investment():
     data = request.get_json()
     symbol = data.get('symbol')
@@ -362,46 +346,36 @@ def calculate_low_volatility_performance(investment_amount, from_date, to_date):
         years = (end_dt - start_dt).days / 365.25
         cagr = ((final_value / investment_amount) ** (1 / years)) - 1 if years > 0 and investment_amount > 0 else 0
 
-        # --- Yearly Performance Calculation ---
-        yearly_performance = []
+        # --- Negative Years Calculation ---
+        negative_years = 0
+
+        # Create a dictionary for quick price lookups by date
         prices = {datetime.strptime(day['date'], '%Y-%m-%d').date(): day['close'] for day in history}
 
-        all_years = sorted(list(set(d.year for d in prices.keys())))
+        # Determine the range of full years to check
+        start_year = start_dt.year + 1
+        end_year = end_dt.year
 
-        for year in all_years:
-            year_dates = sorted([d for d in prices.keys() if d.year == year])
+        for year in range(start_year, end_year):
+            year_start_date = datetime(year, 1, 1).date()
+            year_end_date = datetime(year, 12, 31).date()
 
-            if not year_dates or len(year_dates) < 2:
-                continue
+            # Find the first and last available trading days for the year
+            start_price_date = min((d for d in prices if d >= year_start_date), default=None)
+            end_price_date = max((d for d in prices if d <= year_end_date), default=None)
 
-            start_price_date = year_dates[0]
-            end_price_date = year_dates[-1]
+            if start_price_date and end_price_date and start_price_date < end_price_date:
+                year_start_price = prices[start_price_date]
+                year_end_price = prices[end_price_date]
 
-            year_start_price = prices[start_price_date]
-            year_end_price = prices[end_price_date]
-
-            if year_start_price > 0:
-                return_pct = ((year_end_price / year_start_price) - 1) * 100
-
-                year_label = str(year)
-                # Add (YTD) label if it's the current year and not a full year
-                if year == end_dt.year and not (end_dt.month == 12 and end_dt.day == 31):
-                     year_label = f"{year} (YTD)"
-
-                yearly_performance.append({
-                    "year": year_label,
-                    "is_positive": return_pct >= 0,
-                    "return_pct": f"{return_pct:.2f}"
-                })
-
-        negative_years = sum(1 for p in yearly_performance if not p['is_positive'])
+                if year_end_price < year_start_price:
+                    negative_years += 1
 
         results.append({
             "stock": symbol,
             "final_value": final_value,
             "cagr": cagr * 100,
-            "negative_years": negative_years,
-            "yearly_performance": yearly_performance
+            "negative_years": negative_years
         })
 
     conn.close()

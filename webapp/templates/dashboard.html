@@ -19,44 +19,44 @@
         }
         .nav {
             position: absolute;
-            top: 20px;
-            left: 20px;
+            top: 0;
+            left: 0;
+            width: 100%;
             display: flex;
             gap: 20px;
+            background-color: #00aaff;
+            padding: 10px 20px;
+            z-index: 100;
+            box-sizing: border-box;
+            border-top: 5px solid #0077cc;
         }
         .nav a {
             text-decoration: none;
-            color: #00aaff;
+            color: #ffffff;
             font-weight: bold;
             transition: color 0.3s;
         }
         .nav a:hover {
-            color: #00eeff;
+            color: #e0e0e0;
         }
         .logout-container {
             position: absolute;
-            top: 20px;
+            top: 10px;
             right: 20px;
+            z-index: 101;
         }
         .logout-container a {
             text-decoration: none;
-            color: #ff4444;
-        }
-        #globe-container {
-            width: 100vw;
-            height: 100vh;
-            position: absolute;
-            top: 0;
-            left: 0;
-            z-index: 1;
+            color: #ffffff;
         }
         .welcome-message {
             text-align: center;
             position: relative;
             z-index: 2;
-            background: rgba(18, 18, 18, 0.7);
-            padding: 20px;
-            border-radius: 15px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
         }
         .welcome-message h1 {
             font-size: 3rem;
@@ -107,15 +107,47 @@
             50% { transform: translateY(-15px); }
             100% { transform: translateY(0px); }
         }
+        .rupee-animation-container {
+            margin-bottom: 30px;
+        }
+        .rupee-svg {
+            width: 150px;
+            height: 150px;
+        }
+        .rupee-svg path {
+            stroke: #00aaff;
+            stroke-width: 8;
+            fill: transparent;
+            stroke-dasharray: 1000;
+            stroke-dashoffset: 1000;
+        }
+        .rupee-svg.animate .path1 { animation: draw 1s linear 0.5s forwards; }
+        .rupee-svg.animate .path2 { animation: draw 0.5s linear 1.5s forwards; }
+        .rupee-svg.animate .path3 { animation: draw 0.5s linear 2s forwards; }
+
+        @keyframes draw {
+            to {
+                stroke-dashoffset: 0;
+            }
+        }
+        @keyframes hammer-strike {
+            0% { filter: brightness(1); transform: scale(1); }
+            25% { filter: brightness(2.5); transform: scale(1.05); }
+            50% { filter: brightness(1); transform: scale(1); }
+            100% { filter: brightness(1); transform: scale(1); }
+        }
+        .rupee-svg.strike1 { animation: hammer-strike 0.5s linear 0s; }
+        .rupee-svg.strike2 { animation: hammer-strike 0.5s linear 1s; }
+        .rupee-svg.strike3 { animation: hammer-strike 0.5s linear 1.5s; }
     </style>
 </head>
 <body>
 
     <div class="nav">
         <a href="{{ url_for('dashboard') }}">Dashboard</a>
-        <a href="{{ url_for('index') }}">Chart Viewer</a>
+        <a href="{{ url_for('index') }}">Charts</a>
         <a href="{{ url_for('scanner') }}">Performance Scanner</a>
-        <a href="{{ url_for('low_volatility_scanner') }}">Low-Volatility Scanner</a>
+        <a href="{{ url_for('low_volatility_scanner') }}">Volatility</a>
         <a href="{{ url_for('calculator') }}">Calculator</a>
     </div>
 
@@ -123,19 +155,28 @@
         Logged in as: <strong>{{ current_user.username }}</strong> | <a href="{{ url_for('logout') }}">Logout</a>
     </div>
 
-    <div id="globe-container"></div>
-
     <div class="welcome-message">
+        <div class="rupee-animation-container">
+            <svg class="rupee-svg" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+                <path class="path1" d="M 20,25 H 80"/>
+                <path class="path2" d="M 20,40 H 80"/>
+                <path class="path3" d="M 50,25 V 80 C 50,95 60,95 70,85 L 30,50"/>
+            </svg>
+        </div>
         <h1>Welcome to the Stock Analysis Platform</h1>
-        <p>Navigate to our tools using the cards below or the menu above.</p>
+        <p>Navigate to our tools using the cards below.</p>
         <div class="feature-cards">
             <div class="card" onclick="window.location.href='{{ url_for('index') }}'">
-                <h3>Chart Viewer</h3>
+                <h3>Charts</h3>
                 <p>Visualize and compare stock price history.</p>
             </div>
             <div class="card" onclick="window.location.href='{{ url_for('scanner') }}'">
                 <h3>Performance Scanner</h3>
                 <p>Scan stocks based on historical performance.</p>
+            </div>
+            <div class="card" onclick="window.location.href='{{ url_for('low_volatility_scanner') }}'">
+                <h3>Volatility</h3>
+                <p>Discover low-volatility investment opportunities.</p>
             </div>
             <div class="card" onclick="window.location.href='{{ url_for('calculator') }}'">
                 <h3>Return Calculator</h3>
@@ -143,57 +184,23 @@
             </div>
         </div>
     </div>
-
-    <div class="rupee-symbol">₹</div>
-
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script>
-        const container = document.getElementById('globe-container');
-        let scene, camera, renderer, globe;
+        document.addEventListener("DOMContentLoaded", function() {
+            const svg = document.querySelector('.rupee-svg');
 
-        function init() {
-            scene = new THREE.Scene();
-            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-            camera.position.z = 1.5;
+            setTimeout(() => {
+                svg.classList.add('strike1');
+                svg.classList.add('animate');
+            }, 100);
 
-            renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
-            renderer.setSize(window.innerWidth, window.innerHeight);
-            container.appendChild(renderer.domElement);
+            setTimeout(() => {
+                svg.classList.add('strike2');
+            }, 1100);
 
-            const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
-            scene.add(ambientLight);
-
-            const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
-            directionalLight.position.set(5, 3, 5);
-            scene.add(directionalLight);
-
-            const geometry = new THREE.SphereGeometry(1, 64, 64);
-            const textureLoader = new THREE.TextureLoader();
-            textureLoader.load("{{ url_for('static', filename='earth_texture.jpg') }}", function(texture) {
-                const material = new THREE.MeshStandardMaterial({ map: texture });
-                globe = new THREE.Mesh(geometry, material);
-                scene.add(globe);
-                animate();
-            });
-
-            window.addEventListener('resize', onWindowResize, false);
-        }
-
-        function animate() {
-            requestAnimationFrame(animate);
-            if (globe) {
-                globe.rotation.y += 0.002;
-            }
-            renderer.render(scene, camera);
-        }
-
-        function onWindowResize() {
-            camera.aspect = container.clientWidth / container.clientHeight;
-            camera.updateProjectionMatrix();
-            renderer.setSize(container.clientWidth, container.clientHeight);
-        }
-
-        init();
+            setTimeout(() => {
+                svg.classList.add('strike3');
+            }, 1600);
+        });
     </script>
 </body>
 </html>

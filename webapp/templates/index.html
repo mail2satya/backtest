@@ -27,23 +27,44 @@
         #selected-symbols .close-btn:hover { background: #999; }
         #clear-chart { padding: 8px 12px; border: none; background-color: #f44336; color: white; border-radius: 5px; cursor: pointer; }
         #clear-chart:hover { background-color: #d32f2f; }
-        .nav a { margin: 0 15px; text-decoration: none; color: #007bff; font-weight: bold; }
+        #calculator-container .form-group { margin-bottom: 15px; }
+        #calculator-container label { display: block; margin-bottom: 5px; }
+        #calculator-container input { width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; }
+        #calculator-container button { padding: 10px 15px; border: none; background-color: #007bff; color: white; border-radius: 5px; cursor: pointer; }
+        #calculator-container button:hover { background-color: #0056b3; }
+        #calculator-result { padding: 15px; border: 1px solid #ddd; border-radius: 5px; background-color: #f9f9f9; }
+        #calculator-result p { margin: 0 0 10px; }
+        .nav {
+            display: flex;
+            gap: 20px;
+            background-color: #00aaff;
+            padding: 10px 20px;
+            border-top: 5px solid #0077cc;
+        }
+        .nav a {
+            text-decoration: none;
+            color: #ffffff;
+            font-weight: bold;
+            transition: color 0.3s;
+        }
+        .nav a:hover {
+            color: #e0e0e0;
+        }
     </style>
 </head>
 <body>
-    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-        <div class="nav">
-            <a href="{{ url_for('dashboard') }}">Dashboard</a>
-            <a href="{{ url_for('index') }}">Chart Viewer</a>
-            <a href="{{ url_for('scanner') }}">Performance Scanner</a>
-            <a href="{{ url_for('low_volatility_scanner') }}">Low-Volatility Scanner</a>
-            <a href="{{ url_for('calculator') }}">Calculator</a>
-        </div>
-        <div style="text-align: right;">
-            Logged in as: <strong>{{ current_user.username }}</strong> | <a href="{{ url_for('logout') }}">Logout</a>
-        </div>
+    <div class="nav">
+        <a href="{{ url_for('dashboard') }}">Dashboard</a>
+        <a href="{{ url_for('index') }}">Charts</a>
+        <a href="{{ url_for('scanner') }}">Performance Scanner</a>
+        <a href="{{ url_for('low_volatility_scanner') }}">Volatility</a>
+        <a href="{{ url_for('calculator') }}">Calculator</a>
     </div>
-    <h1 style="text-align: center;">Stock Chart Viewer</h1>
+    <div style="text-align: right; padding: 10px;">
+        Logged in as: <strong>{{ current_user.username }}</strong> | <a href="{{ url_for('logout') }}">Logout</a>
+    </div>
+    <h1 style="text-align: center;">Charts</h1>
+    <title>Charts</title>
     <div class="search-container">
         <input type="text" id="stock-search" placeholder="Type a stock symbol (e.g., TCS)...">
         <div id="suggestions"></div>
