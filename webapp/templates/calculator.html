@@ -5,7 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Investment Return Calculator</title>
     <style>
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; margin: 40px auto; max-width: 800px; line-height: 1.6; color: #333; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; margin: 0; line-height: 1.6; color: #333; }
+        .main-content { max-width: 800px; margin: 40px auto; }
         h1 { text-align: center; }
         .search-container { position: relative; margin-bottom: 20px; }
         #stock-search { width: 100%; padding: 10px; font-size: 16px; border: 1px solid #ccc; border-radius: 5px; }
@@ -20,12 +21,17 @@
         #calculator-result { padding: 15px; border: 1px solid #ddd; border-radius: 5px; background-color: #f9f9f9; }
         #calculator-result p { margin: 0 0 10px; }
         #calculator-result .label { font-weight: bold; }
+        .nav-container {
+            width: 100%;
+            background-color: #00aaff;
+            border-top: 5px solid #0077cc;
+        }
         .nav {
             display: flex;
             gap: 20px;
-            background-color: #00aaff;
             padding: 10px 20px;
-            border-top: 5px solid #0077cc;
+            max-width: 800px;
+            margin: 0 auto;
         }
         .nav a {
             text-decoration: none;
@@ -42,17 +48,20 @@
     </style>
 </head>
 <body>
-    <div class="nav">
-        <a href="{{ url_for('dashboard') }}">Dashboard</a>
-        <a href="{{ url_for('index') }}">Charts</a>
-        <a href="{{ url_for('scanner') }}">Performance Scanner</a>
-        <a href="{{ url_for('low_volatility_scanner') }}">Volatility</a>
-        <a href="{{ url_for('calculator') }}">Calculator</a>
+    <div class="nav-container">
+        <div class="nav">
+            <a href="{{ url_for('dashboard') }}">Dashboard</a>
+            <a href="{{ url_for('index') }}">Charts</a>
+            <a href="{{ url_for('scanner') }}">Performance Scanner</a>
+            <a href="{{ url_for('low_volatility_scanner') }}">Volatility</a>
+            <a href="{{ url_for('calculator') }}">Calculator</a>
+        </div>
     </div>
-    <div style="text-align: right; padding: 10px;">
-        Logged in as: <strong>{{ current_user.username }}</strong> | <a href="{{ url_for('logout') }}">Logout</a>
-    </div>
-    <h1>Investment Return Calculator</h1>
+    <div class="main-content">
+        <div style="text-align: right; padding: 10px;">
+            Logged in as: <strong>{{ current_user.username }}</strong> | <a href="{{ url_for('logout') }}">Logout</a>
+        </div>
+        <h1>Investment Return Calculator</h1>
     <div id="calculator-container">
         <form id="calculator-form">
             <div class="form-group search-container">
