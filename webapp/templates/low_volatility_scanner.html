@@ -5,15 +5,20 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Volatility Scanner</title>
     <style>
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; margin: 40px auto; max-width: 900px; line-height: 1.6; color: #333; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; margin: 0; line-height: 1.6; color: #333; }
+        .main-content { max-width: 900px; margin: 40px auto; }
         h1 { text-align: center; }
-        .nav { text-align: center; margin-bottom: 20px; }
+        .nav-container {
+            width: 100%;
+            background-color: #00aaff;
+            border-top: 5px solid #0077cc;
+        }
         .nav {
             display: flex;
             gap: 20px;
-            background-color: #00aaff;
             padding: 10px 20px;
-            border-top: 5px solid #0077cc;
+            max-width: 900px;
+            margin: 0 auto;
         }
         .nav a {
             text-decoration: none;
@@ -39,16 +44,18 @@
     </style>
 </head>
 <body>
-    <div class="nav">
-        <a href="{{ url_for('dashboard') }}">Dashboard</a>
-        <a href="{{ url_for('index') }}">Charts</a>
-        <a href="{{ url_for('scanner') }}">Performance Scanner</a>
-        <a href="{{ url_for('low_volatility_scanner') }}">Volatility</a>
-        <a href="{{ url_for('calculator') }}">Calculator</a>
+    <div class="nav-container">
+        <div class="nav">
+            <a href="{{ url_for('dashboard') }}">Dashboard</a>
+            <a href="{{ url_for('index') }}">Charts</a>
+            <a href="{{ url_for('scanner') }}">Performance Scanner</a>
+            <a href="{{ url_for('low_volatility_scanner') }}">Volatility</a>
+            <a href="{{ url_for('calculator') }}">Calculator</a>
+        </div>
     </div>
-    <h1>Volatility Scanner</h1>
-
-    <div class="form-container">
+    <div class="main-content">
+        <h1>Volatility Scanner</h1>
+        <div class="form-container">
         <form id="scanner-form" method="POST">
             <div class="form-group">
                 <label for="from_date">From Date</label>

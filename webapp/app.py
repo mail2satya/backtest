@@ -36,7 +36,7 @@ def dashboard():
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if current_user.is_authenticated:
-        return redirect(url_for('index'))
+        return redirect(url_for('dashboard'))
     if request.method == 'POST':
         username = request.form['username']
         password = request.form['password']
@@ -46,7 +46,7 @@ def login():
         user = User(id=user_data['id'], username=user_data['username'], password_hash=user_data['password_hash']) if user_data else None
         if user and check_password_hash(user.password_hash, password):
             login_user(user)
-            return redirect(url_for('index'))
+            return redirect(url_for('dashboard'))
         else:
             flash('Invalid username or password')
     return render_template('login.html')
