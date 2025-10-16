@@ -1,62 +1,20 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dashboard - Stock Analysis</title>
+{% extends "base.html" %}
+
+{% block title %}Dashboard - Stock Analysis{% endblock %}
+
+{% block head %}
     <style>
         body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-            margin: 0;
             background-color: #121212;
             color: #e0e0e0;
             overflow: hidden;
+        }
+        .main-content {
             display: flex;
             flex-direction: column;
             align-items: center;
             justify-content: center;
-            height: 100vh;
-        }
-        .nav {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            display: flex;
-            gap: 20px;
-            background-color: #00aaff;
-            padding: 10px 20px;
-            z-index: 100;
-            box-sizing: border-box;
-            border-top: 5px solid #0077cc;
-        }
-        .nav a {
-            text-decoration: none;
-            color: #ffffff;
-            font-weight: bold;
-            transition: color 0.3s;
-        }
-        .nav a:hover {
-            color: #e0e0e0;
-        }
-        .logout-container {
-            position: absolute;
-            top: 10px;
-            right: 20px;
-            z-index: 101;
-        }
-        .logout-container a {
-            text-decoration: none;
-            color: #ffffff;
-        }
-        .welcome-message {
-            text-align: center;
-            position: relative;
-            z-index: 2;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
+            height: calc(100vh - 60px);
         }
         .welcome-message h1 {
             font-size: 3rem;
@@ -70,7 +28,6 @@
             display: flex;
             gap: 20px;
             margin-top: 40px;
-            z-index: 10;
         }
         .card {
             background: rgba(255, 255, 255, 0.05);
@@ -123,7 +80,7 @@
         }
         .rupee-svg.animate .path1 { animation: draw 1s linear 0.5s forwards; }
         .rupee-svg.animate .path2 { animation: draw 0.5s linear 1.5s forwards; }
-        .rupee-svg.animate .path3 { animation: draw 0.5s linear 2s forwards; }
+        .rupee-svg.animate .path3 { animation: draw 1.5s linear 2s forwards; }
 
         @keyframes draw {
             to {
@@ -138,29 +95,17 @@
         }
         .rupee-svg.strike1 { animation: hammer-strike 0.5s linear 0s; }
         .rupee-svg.strike2 { animation: hammer-strike 0.5s linear 1s; }
-        .rupee-svg.strike3 { animation: hammer-strike 0.5s linear 1.5s; }
     </style>
-</head>
-<body>
+{% endblock %}
 
-    <div class="nav">
-        <a href="{{ url_for('dashboard') }}">Dashboard</a>
-        <a href="{{ url_for('index') }}">Charts</a>
-        <a href="{{ url_for('scanner') }}">Performance Scanner</a>
-        <a href="{{ url_for('low_volatility_scanner') }}">Volatility</a>
-        <a href="{{ url_for('calculator') }}">Calculator</a>
-    </div>
-
-    <div class="logout-container">
-        Logged in as: <strong>{{ current_user.username }}</strong> | <a href="{{ url_for('logout') }}">Logout</a>
-    </div>
-
+{% block content %}
     <div class="welcome-message">
         <div class="rupee-animation-container">
             <svg class="rupee-svg" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
-                <path class="path1" d="M 20,25 H 80"/>
-                <path class="path2" d="M 20,40 H 80"/>
-                <path class="path3" d="M 50,25 V 80 C 50,95 60,95 70,85 L 30,50"/>
+                <!-- Corrected Rupee Symbol SVG paths -->
+                <path class="path1" d="M 20,35 H 80"/>
+                <path class="path2" d="M 20,25 H 80"/>
+                <path class="path3" d="M 35,25 V 85 C 35,95 45,95 55,85 L 75,55"/>
             </svg>
         </div>
         <h1>Welcome to the Stock Analysis Platform</h1>
@@ -196,11 +141,6 @@
             setTimeout(() => {
                 svg.classList.add('strike2');
             }, 1100);
-
-            setTimeout(() => {
-                svg.classList.add('strike3');
-            }, 1600);
         });
     </script>
-</body>
-</html>
+{% endblock %}

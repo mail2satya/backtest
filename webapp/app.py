@@ -96,6 +96,31 @@ def get_db_connection():
     conn.row_factory = sqlite3.Row
     return conn
 
+def init_db():
+    """Initializes the database and creates a test user if not present."""
+    conn = get_db_connection()
+    # Check if the users table exists
+    cursor = conn.cursor()
+    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='users';")
+    if cursor.fetchone() is None:
+        # Create the users table if it doesn't exist
+        conn.execute('''
+            CREATE TABLE users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                username TEXT NOT NULL UNIQUE,
+                password_hash TEXT NOT NULL
+            );
+        ''')
+
+    # Check if the test user exists
+    user = conn.execute('SELECT id FROM users WHERE username = ?', ('testuser',)).fetchone()
+    if not user:
+        password_hash = generate_password_hash('password', method='pbkdf2:sha256')
+        conn.execute('INSERT INTO users (username, password_hash) VALUES (?, ?)', ('testuser', password_hash))
+        conn.commit()
+    conn.close()
+
+
 @app.route('/')
 @login_required
 def index():
