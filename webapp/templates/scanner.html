@@ -1,34 +1,9 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Stock Performance Scanner</title>
+{% extends "base.html" %}
+
+{% block title %}Stock Performance Scanner{% endblock %}
+
+{% block head %}
     <style>
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; margin: 0; line-height: 1.6; color: #333; }
-        .main-content { max-width: 900px; margin: 40px auto; }
-        h1 { text-align: center; }
-        .nav-container {
-            width: 100%;
-            background-color: #00aaff;
-            border-top: 5px solid #0077cc;
-        }
-        .nav {
-            display: flex;
-            gap: 20px;
-            padding: 10px 20px;
-            max-width: 900px;
-            margin: 0 auto;
-        }
-        .nav a {
-            text-decoration: none;
-            color: #ffffff;
-            font-weight: bold;
-            transition: color 0.3s;
-        }
-        .nav a:hover {
-            color: #e0e0e0;
-        }
         .form-container { background-color: #f9f9f9; padding: 20px; border-radius: 8px; margin-bottom: 20px; }
         .form-container form { display: flex; justify-content: space-between; align-items: flex-end; }
         .form-container .form-group { display: flex; flex-direction: column; }
@@ -42,20 +17,11 @@
         .loader { text-align: center; font-size: 18px; display: none; }
         .error { color: red; text-align: center; }
     </style>
-</head>
-<body>
-    <div class="nav-container">
-        <div class="nav">
-            <a href="{{ url_for('dashboard') }}">Dashboard</a>
-            <a href="{{ url_for('index') }}">Charts</a>
-            <a href="{{ url_for('scanner') }}">Performance Scanner</a>
-            <a href="{{ url_for('low_volatility_scanner') }}">Volatility</a>
-            <a href="{{ url_for('calculator') }}">Calculator</a>
-        </div>
-    </div>
-    <div class="main-content">
-        <h1>Stock Performance Scanner</h1>
-        <div class="form-container">
+{% endblock %}
+
+{% block content %}
+    <h1>Stock Performance Scanner</h1>
+    <div class="form-container">
         <form id="scanner-form" method="POST">
             <div class="form-group">
                 <label for="from_date">From Date</label>
@@ -114,5 +80,4 @@
             document.getElementById('to_date').value = new Date().toISOString().split('T')[0];
         }
     </script>
-</body>
-</html>
+{% endblock %}
