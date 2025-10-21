@@ -177,7 +177,7 @@
                             rangeslider: { visible: false },
                             range: [oneYearAgo.toISOString().split('T')[0], new Date().toISOString().split('T')[0]]
                         },
-                        yaxis: { title: 'Price', rangemode: 'tozero' },
+                        yaxis: { title: 'Price', range: [0, null] },
                         dragmode: 'pan'
                     };
 
@@ -196,7 +196,7 @@
                     layout = {
                         title: `Stock Price Comparison`,
                         xaxis: { title: 'Date' },
-                        yaxis: { title: 'Price', rangemode: 'tozero' },
+                        yaxis: { title: 'Price', range: [0, null] },
                         dragmode: 'pan',
                         showlegend: true
                     };
