@@ -16,11 +16,17 @@
         .results-table th { background-color: #f2f2f2; }
         .loader { text-align: center; font-size: 18px; display: none; }
         .error { color: red; text-align: center; }
+        .performance-dots { display: flex; flex-wrap: wrap; align-items: center; }
+        .dot { width: 15px; height: 15px; border-radius: 50%; margin: 2px; position: relative; cursor: pointer; background-image: radial-gradient(circle at 50% 120%, #ffffff 0%, rgba(255, 255, 255, 0) 70%); box-shadow: 0 2px 4px rgba(0,0,0,0.2); }
+        .dot-green { background-color: #28a745; }
+        .dot-red { background-color: #dc3545; }
+        .dot .tooltip { visibility: hidden; width: 120px; background-color: #333; color: #fff; text-align: center; border-radius: 6px; padding: 5px 0; position: absolute; z-index: 1; bottom: 125%; left: 50%; margin-left: -60px; opacity: 0; transition: opacity 0.3s; }
+        .dot:hover .tooltip { visibility: visible; opacity: 1; }
     </style>
 {% endblock %}
 
 {% block content %}
-    <h1>Volatility Scanner</h1>
+    <h1>Low Volatility Scanner</h1>
     <div class="form-container">
         <form id="scanner-form" method="POST">
             <div class="form-group">
@@ -56,7 +62,7 @@
                 <th>Stock</th>
                 <th>Final Value (INR)</th>
                 <th>CAGR (%)</th>
-                <th>Negative Years</th>
+                <th>Yearly Performance</th>
             </tr>
         </thead>
         <tbody>
@@ -66,7 +72,15 @@
                 <td>{{ result.stock }}</td>
                 <td>{{ "%.2f"|format(result.final_value) }}</td>
                 <td>{{ "%.2f"|format(result.cagr) }}</td>
-                <td>{{ result.negative_years }}</td>
+                <td>
+                    <div class="performance-dots">
+                        {% for year_data in result.yearly_performance %}
+                            <div class="dot {{ 'dot-green' if year_data.return >= 0 else 'dot-red' }}">
+                                <span class="tooltip">{{ year_data.year }}: {{ "%.2f"|format(year_data.return) }}%</span>
+                            </div>
+                        {% endfor %}
+                    </div>
+                </td>
             </tr>
             {% endfor %}
         </tbody>
