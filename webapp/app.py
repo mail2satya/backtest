@@ -282,11 +282,14 @@ def calculate_scanner_performance(investment_amount, from_date, to_date, stock_s
         initial_price = history[0]['close']
         shares = investment_amount / initial_price
         cash = 0
+        total_dividends = 0
 
         for day in history:
             action = day['action_type'].lower() if day['action_type'] else ''
             if action == 'dividend' and day['value'] > 0:
-                cash += shares * day['value']
+                dividend_cash = shares * day['value']
+                total_dividends += dividend_cash
+                cash += dividend_cash
             if cash > 0 and day['close'] > 0:
                 shares += cash / day['close']
                 cash = 0
@@ -332,7 +335,8 @@ def calculate_scanner_performance(investment_amount, from_date, to_date, stock_s
             "stock": symbol,
             "final_value": final_value,
             "cagr": cagr * 100,
-            "yearly_performance": yearly_performance
+            "yearly_performance": yearly_performance,
+            "total_dividends": total_dividends
         })
 
     conn.close()
