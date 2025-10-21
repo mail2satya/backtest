@@ -11,8 +11,8 @@
         #suggestions, .suggestions-list { position: absolute; border: 1px solid #ddd; border-top: none; z-index: 99; top: 100%; left: 0; right: 0; background-color: #fff; }
         #suggestions div, .suggestions-list div { padding: 10px; cursor: pointer; border-bottom: 1px solid #ddd; }
         #suggestions div:hover, .suggestions-list div:hover { background-color: #f1f1f1; }
-        #chart { width: 100%; height: 500px; }
-        #chart-container { position: relative; }
+        #chart { width: 100%; height: 600px; }
+        #chart-container { position: relative; border: 1px solid #ccc; }
         #actions-container { position: absolute; bottom: 80px; /* Adjust based on Plotly's x-axis height */ left: 60px; /* Adjust based on Plotly's y-axis width */ right: 20px; height: 30px; z-index: 10; pointer-events: none; }
         .action-marker { position: absolute; bottom: 0; width: 20px; height: 20px; background-color: #e0e0e0; border: 1px solid #999; border-radius: 50%; text-align: center; line-height: 18px; font-size: 12px; font-weight: bold; cursor: pointer; pointer-events: all; }
         .action-marker:hover .tooltip { display: block; }
@@ -38,12 +38,16 @@
         <div id="selected-symbols"></div>
         <button id="clear-chart" style="display:none;">Clear Chart</button>
     </div>
+{% endblock %}
 
+{% block full_width_content %}
     <div id="chart-container">
         <div id="chart"></div>
         <div id="actions-container"></div>
     </div>
+{% endblock %}
 
+{% block scripts %}
     <script>
         const searchInput = document.getElementById('stock-search');
         const suggestionsContainer = document.getElementById('suggestions');
@@ -163,10 +167,17 @@
                         });
                     }
 
+                    const oneYearAgo = new Date();
+                    oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
+
                     layout = {
                         title: `${symbol} Candlestick Chart`,
-                        xaxis: { title: 'Date', rangeslider: { visible: false } },
-                        yaxis: { title: 'Price', range: [0, null] },
+                        xaxis: {
+                            title: 'Date',
+                            rangeslider: { visible: false },
+                            range: [oneYearAgo.toISOString().split('T')[0], new Date().toISOString().split('T')[0]]
+                        },
+                        yaxis: { title: 'Price', rangemode: 'tozero' },
                         dragmode: 'pan'
                     };
 
@@ -185,7 +196,7 @@
                     layout = {
                         title: `Stock Price Comparison`,
                         xaxis: { title: 'Date' },
-                        yaxis: { title: 'Price', range: [0, null] },
+                        yaxis: { title: 'Price', rangemode: 'tozero' },
                         dragmode: 'pan',
                         showlegend: true
                     };
