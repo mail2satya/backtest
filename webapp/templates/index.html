@@ -212,7 +212,14 @@
                 });
                 updateSelectedSymbolsUI();
 
-                chartDiv.on('plotly_relayout', renderActionMarkers);
+                chartDiv.on('plotly_relayout', (eventData) => {
+                    renderActionMarkers();
+                    const layout = chartDiv.layout;
+                    if (layout.yaxis.range[0] < 0) {
+                        const newRange = [0, layout.yaxis.range[1]];
+                        Plotly.relayout(chartDiv, { 'yaxis.range': newRange });
+                    }
+                });
 
             } catch (error) {
                 console.error('Error fetching chart data:', error);
