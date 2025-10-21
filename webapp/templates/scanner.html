@@ -72,6 +72,7 @@
                 <th>Stock</th>
                 <th>Final Value (INR)</th>
                 <th>CAGR (%)</th>
+                <th>Cumulative Dividend (INR)</th>
                 <th>Yearly Performance</th>
             </tr>
         </thead>
@@ -82,6 +83,7 @@
                 <td>{{ result.stock }}</td>
                 <td>{{ "%.2f"|format(result.final_value) }}</td>
                 <td>{{ "%.2f"|format(result.cagr) }}</td>
+                <td>{{ "%.2f"|format(result.total_dividends) }}</td>
                 <td>
                     <div class="performance-dots">
                         {% for year_data in result.yearly_performance %}
