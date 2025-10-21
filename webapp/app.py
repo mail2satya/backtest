@@ -373,33 +373,24 @@ def calculate_low_volatility_performance(investment_amount, from_date, to_date):
 
         # --- Yearly Performance Calculation ---
         yearly_performance = []
-        negative_years_count = 0
 
-        # Create a dictionary for quick price lookups by date and get sorted list of dates
-        prices = {datetime.strptime(day['date'], '%Y-%m-%d').date(): day['close'] for day in history}
-        all_dates = sorted(prices.keys())
+        # Group data by year
+        yearly_data = {}
+        for day in history:
+            year = datetime.strptime(day['date'], '%Y-%m-%d').year
+            if year not in yearly_data:
+                yearly_data[year] = []
+            yearly_data[year].append(day)
 
-        # Determine the range of years to check
-        start_year = start_dt.year
-        end_year = end_dt.year
-
-        for year in range(start_year, end_year + 1):
-            # Filter dates for the current year
-            dates_in_year = [d for d in all_dates if d.year == year]
-
-            if not dates_in_year or len(dates_in_year) < 2:
+        for year, year_days in sorted(yearly_data.items()):
+            if len(year_days) < 2:
                 continue
 
-            year_start_date = dates_in_year[0]
-            year_end_date = dates_in_year[-1]
-
-            year_start_price = prices[year_start_date]
-            year_end_price = prices[year_end_date]
+            year_start_price = year_days[0]['close']
+            year_end_price = year_days[-1]['close']
 
             if year_start_price > 0:
                 performance = ((year_end_price / year_start_price) - 1) * 100
-                if performance < 0:
-                    negative_years_count += 1
 
                 # Check if the last day of the period is not the end of the calendar year
                 is_ytd = (year == end_dt.year) and (end_dt.month != 12 or end_dt.day != 31)
@@ -413,13 +404,17 @@ def calculate_low_volatility_performance(investment_amount, from_date, to_date):
             "stock": symbol,
             "final_value": final_value,
             "cagr": cagr * 100,
-            "yearly_performance": yearly_performance,
-            "negative_years": negative_years_count
+            "yearly_performance": yearly_performance
         })
 
     conn.close()
 
-    # Sort by CAGR (desc) and then by negative years (asc)
+    # Sort by CAGR (desc)
+    # We add a secondary sort key for volatility (number of negative years)
+    # to find low-volatility stocks.
+    for res in results:
+        res['negative_years'] = sum(1 for y in res['yearly_performance'] if y['return'] < 0)
+
     sorted_results = sorted(results, key=lambda x: (-x['cagr'], x['negative_years']))
 
     for i, result in enumerate(sorted_results):

@@ -75,7 +75,7 @@
                 <td>
                     <div class="performance-dots">
                         {% for year_data in result.yearly_performance %}
-                            <div class="dot {{ 'dot-green' if year_data.return >= 0 else 'dot-red' }}">
+                            <div class="dot {{ 'dot-green' if year_data.return >= 0 else 'dot-red' }}" title="{{ year_data.year }}: {{ "%.2f"|format(year_data.return) }}%">
                                 <span class="tooltip">{{ year_data.year }}: {{ "%.2f"|format(year_data.return) }}%</span>
                             </div>
                         {% endfor %}
