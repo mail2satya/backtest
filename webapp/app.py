@@ -245,98 +245,26 @@ def scanner():
         from_date = request.form.get('from_date')
         to_date = request.form.get('to_date')
         investment_amount = float(request.form.get('investment_amount', 10000))
+        stock_symbol = request.form.get('stock', None)
 
         if not from_date or not to_date:
             return render_template('scanner.html', error="Please select both a start and end date.")
 
-        results = calculate_stock_performance(investment_amount, from_date, to_date)
-        return render_template('scanner.html', results=results)
+        results = calculate_scanner_performance(investment_amount, from_date, to_date, stock_symbol)
+        return render_template('scanner.html', results=results, stock=stock_symbol)
 
     return render_template('scanner.html')
 
-def calculate_stock_performance(investment_amount, from_date, to_date):
-    """
-    Calculates the performance of all stocks over a given period,
-    reinvesting dividends.
-    """
-    conn = get_db_connection()
-    # Get all distinct stocks from the database
-    stocks = conn.execute("SELECT DISTINCT stock FROM merged_data").fetchall()
-
-    results = []
-
-    for stock_row in stocks:
-        symbol = stock_row['stock']
-        history = conn.execute(
-            "SELECT date, close, action_type, value FROM merged_data WHERE stock = ? AND date BETWEEN ? AND ? ORDER BY date",
-            (symbol, from_date, to_date)
-        ).fetchall()
-
-        if not history or not history[0]['close']:
-            continue
-
-        initial_price = history[0]['close']
-        shares = investment_amount / initial_price
-        cash = 0
-
-        for day in history:
-            action = day['action_type'].lower() if day['action_type'] else ''
-            if action == 'dividend' and day['value'] > 0:
-                cash += shares * day['value']
-
-            if cash > 0 and day['close'] > 0:
-                shares += cash / day['close']
-                cash = 0
-
-        final_price = history[-1]['close']
-        final_value = shares * final_price
-
-        start_dt = datetime.strptime(history[0]['date'], '%Y-%m-%d')
-        end_dt = datetime.strptime(history[-1]['date'], '%Y-%m-%d')
-        years = (end_dt - start_dt).days / 365.25
-        cagr = 0
-        if years > 0 and investment_amount > 0:
-            cagr = ((final_value / investment_amount) ** (1 / years)) - 1
-
-        results.append({
-            "stock": symbol,
-            "final_value": final_value,
-            "cagr": cagr * 100
-        })
-
-    conn.close()
-
-    # Sort results by final value in descending order
-    sorted_results = sorted(results, key=lambda x: x['final_value'], reverse=True)
-
-    # Add ranks
-    for i, result in enumerate(sorted_results):
-        result['rank'] = i + 1
-
-    return sorted_results
-
-@app.route('/low-volatility-scanner', methods=['GET', 'POST'])
-@login_required
-def low_volatility_scanner():
-    if request.method == 'POST':
-        from_date = request.form.get('from_date')
-        to_date = request.form.get('to_date')
-        investment_amount = float(request.form.get('investment_amount', 10000))
-
-        if not from_date or not to_date:
-            return render_template('low_volatility_scanner.html', error="Please select both a start and end date.")
-
-        results = calculate_low_volatility_performance(investment_amount, from_date, to_date)
-        return render_template('low_volatility_scanner.html', results=results)
-
-    return render_template('low_volatility_scanner.html')
-
-def calculate_low_volatility_performance(investment_amount, from_date, to_date):
+def calculate_scanner_performance(investment_amount, from_date, to_date, stock_symbol=None):
     """
     Calculates stock performance, including CAGR and the number of negative-return years.
+    If stock_symbol is provided, calculates for only that stock.
     """
     conn = get_db_connection()
-    stocks = conn.execute("SELECT DISTINCT stock FROM merged_data").fetchall()
+    if stock_symbol:
+        stocks = conn.execute("SELECT DISTINCT stock FROM merged_data WHERE stock = ?", (stock_symbol.upper(),)).fetchall()
+    else:
+        stocks = conn.execute("SELECT DISTINCT stock FROM merged_data").fetchall()
 
     results = []
 
