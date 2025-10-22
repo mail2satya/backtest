@@ -246,19 +246,22 @@ def scanner():
         to_date = request.form.get('to_date')
         investment_amount = float(request.form.get('investment_amount', 10000))
         stock_symbol = request.form.get('stock', None)
+        sort_by = request.form.get('sort_by', 'cagr')
+        sort_order = request.form.get('sort_order', 'desc')
 
         if not from_date or not to_date:
             return render_template('scanner.html', error="Please select both a start and end date.")
 
-        results = calculate_scanner_performance(investment_amount, from_date, to_date, stock_symbol)
-        return render_template('scanner.html', results=results, stock=stock_symbol)
+        results = calculate_scanner_performance(investment_amount, from_date, to_date, stock_symbol, sort_by, sort_order)
+        return render_template('scanner.html', results=results, stock=stock_symbol, sort_by=sort_by, sort_order=sort_order)
 
     return render_template('scanner.html')
 
-def calculate_scanner_performance(investment_amount, from_date, to_date, stock_symbol=None):
+def calculate_scanner_performance(investment_amount, from_date, to_date, stock_symbol=None, sort_by='cagr', sort_order='desc'):
     """
     Calculates stock performance, including CAGR and the number of negative-return years.
     If stock_symbol is provided, calculates for only that stock.
+    Allows sorting by specified column.
     """
     conn = get_db_connection()
     if stock_symbol:
@@ -341,13 +344,27 @@ def calculate_scanner_performance(investment_amount, from_date, to_date, stock_s
 
     conn.close()
 
-    # Sort by CAGR (desc)
-    # We add a secondary sort key for volatility (number of negative years)
-    # to find low-volatility stocks.
+    # Add negative years for volatility sorting
     for res in results:
         res['negative_years'] = sum(1 for y in res['yearly_performance'] if y['return'] < 0)
 
-    sorted_results = sorted(results, key=lambda x: (-x['cagr'], x['negative_years']))
+    # Dynamic sorting
+    is_reverse = (sort_order == 'desc')
+
+    # Define a primary sort key, with a secondary sort for volatility
+    def sort_key(x):
+        primary_key = x.get(sort_by, 0)
+        # For 'cagr', a higher value is better. For others, it might vary.
+        # The primary key will be handled by is_reverse.
+        return (primary_key, x['negative_years'])
+
+    # We handle the reverse logic manually for the primary key if it's descending.
+    # The secondary key (negative_years) should always be ascending (less is better).
+    if sort_by in ['cagr', 'final_value', 'total_dividends']:
+        sorted_results = sorted(results, key=lambda x: (x.get(sort_by, 0), x['negative_years']), reverse=is_reverse)
+    else: # Default or other cases
+        sorted_results = sorted(results, key=lambda x: (-x['cagr'], x['negative_years']))
+
 
     for i, result in enumerate(sorted_results):
         result['rank'] = i + 1
