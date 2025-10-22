@@ -14,6 +14,11 @@
         .results-table { width: 100%; border-collapse: collapse; margin-top: 20px; }
         .results-table th, .results-table td { border: 1px solid #ddd; padding: 10px; text-align: left; }
         .results-table th { background-color: #f2f2f2; }
+        .results-table .sortable { cursor: pointer; }
+        .results-table .sortable:hover { background-color: #e2e2e2; }
+        .results-table .sort-arrow { display: inline-block; width: 0; height: 0; border-left: 5px solid transparent; border-right: 5px solid transparent; margin-left: 5px; }
+        .results-table .sort-arrow.asc { border-bottom: 5px solid #333; }
+        .results-table .sort-arrow.desc { border-top: 5px solid #333; }
         .loader { text-align: center; font-size: 18px; display: none; }
         .error { color: red; text-align: center; }
         .performance-dots { display: flex; flex-wrap: wrap; align-items: center; }
@@ -34,6 +39,8 @@
     <h1>Low Volatility Scanner</h1>
     <div class="form-container">
         <form id="scanner-form" method="POST">
+            <input type="hidden" id="sort_by" name="sort_by" value="{{ sort_by or 'cagr' }}">
+            <input type="hidden" id="sort_order" name="sort_order" value="{{ sort_order or 'desc' }}">
             <div class="form-group">
                 <label for="from_date">From Date</label>
                 <input type="date" id="from_date" name="from_date" value="{{ request.form.from_date }}" required>
@@ -70,9 +77,9 @@
             <tr>
                 <th>Rank</th>
                 <th>Stock</th>
-                <th>Final Value (INR)</th>
-                <th>CAGR (%)</th>
-                <th>Cumulative Dividend (INR)</th>
+                <th class="sortable" data-sort="final_value">Final Value (INR)</th>
+                <th class="sortable" data-sort="cagr">CAGR (%)</th>
+                <th class="sortable" data-sort="total_dividends">Cumulative Dividend (INR)</th>
                 <th>Yearly Performance</th>
             </tr>
         </thead>
@@ -100,10 +107,38 @@
     {% endif %}
 
     <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const form = document.getElementById('scanner-form');
+            const sortByInput = document.getElementById('sort_by');
+            const sortOrderInput = document.getElementById('sort_order');
+
+            document.querySelectorAll('.sortable').forEach(header => {
+                header.addEventListener('click', function() {
+                    const newSortBy = this.dataset.sort;
+                    let newSortOrder = 'desc';
+
+                    if (sortByInput.value === newSortBy) {
+                        newSortOrder = (sortOrderInput.value === 'desc') ? 'asc' : 'desc';
+                    }
+
+                    sortByInput.value = newSortBy;
+                    sortOrderInput.value = newSortOrder;
+                    form.submit();
+                });
+
+                // Add sort arrows
+                if (sortByInput.value === header.dataset.sort) {
+                    const arrow = document.createElement('span');
+                    arrow.className = 'sort-arrow ' + sortOrderInput.value;
+                    header.appendChild(arrow);
+                }
+            });
+        });
+
         document.getElementById('scanner-form').addEventListener('submit', function() {
             document.getElementById('loader').style.display = 'block';
         });
-        // Set default 'To Date' to today
+
         if (!document.getElementById('to_date').value) {
             document.getElementById('to_date').value = new Date().toISOString().split('T')[0];
         }
@@ -123,13 +158,10 @@
         const onSearchInput = async (event) => {
             const query = event.target.value;
             suggestionsContainer.innerHTML = '';
-
             if (query.length < 2) return;
-
             try {
                 const response = await fetch(`/api/search?q=${query}`);
                 const suggestions = await response.json();
-
                 suggestions.forEach(symbol => {
                     const div = document.createElement('div');
                     div.textContent = symbol;
@@ -145,7 +177,6 @@
         };
 
         searchInput.addEventListener('input', debounce(onSearchInput, 300));
-
         document.addEventListener('click', (event) => {
             if (!suggestionsContainer.contains(event.target) && event.target !== searchInput) {
                 suggestionsContainer.innerHTML = '';
