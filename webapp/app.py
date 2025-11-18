@@ -242,8 +242,8 @@ def calculate_investment():
     final_value = shares * final_price
 
     # Calculate CAGR
-    start_dt = datetime.strptime(history[0]['date'], '%Y-%m-%d')
-    end_dt = datetime.strptime(history[-1]['date'], '%Y-%m-%d')
+    start_dt = history[0]['date']
+    end_dt = history[-1]['date']
     years = (end_dt - start_dt).days / 365.25
     cagr = 0
     if years > 0 and investment_amount > 0:
@@ -252,8 +252,8 @@ def calculate_investment():
     return jsonify({
         "initial_investment": investment_amount,
         "final_value": round(final_value, 2),
-        "start_date": history[0]['date'],
-        "end_date": history[-1]['date'],
+        "start_date": history[0]['date'].strftime('%Y-%m-%d'),
+        "end_date": history[-1]['date'].strftime('%Y-%m-%d'),
         "start_price": float(history[0]['close']),
         "end_price": final_price,
         "total_dividends": round(total_dividends_received, 2),
@@ -325,8 +325,8 @@ def calculate_scanner_performance(investment_amount, from_date, to_date, stock_s
         final_price = float(history[-1]['close'])
         final_value = shares * final_price
 
-        start_dt = datetime.strptime(history[0]['date'], '%Y-%m-%d')
-        end_dt = datetime.strptime(history[-1]['date'], '%Y-%m-%d')
+        start_dt = history[0]['date']
+        end_dt = history[-1]['date']
         years = (end_dt - start_dt).days / 365.25
         cagr = ((final_value / investment_amount) ** (1 / years)) - 1 if years > 0 and investment_amount > 0 else 0
 
@@ -336,7 +336,7 @@ def calculate_scanner_performance(investment_amount, from_date, to_date, stock_s
         # Group data by year
         yearly_data = {}
         for day in history:
-            year = datetime.strptime(day['date'], '%Y-%m-%d').year
+            year = day['date'].year
             if year not in yearly_data:
                 yearly_data[year] = []
             yearly_data[year].append(day)
