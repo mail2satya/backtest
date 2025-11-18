@@ -1,5 +1,6 @@
 from flask import Flask, jsonify, render_template, request, redirect, url_for, flash
-import sqlite3
+import psycopg2
+import psycopg2.extras
 import os
 from datetime import datetime
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -22,7 +23,9 @@ class User(UserMixin):
 @login_manager.user_loader
 def load_user(user_id):
     conn = get_db_connection()
-    user_data = conn.execute('SELECT * FROM users WHERE id = ?', (user_id,)).fetchone()
+    cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+    cursor.execute('SELECT * FROM users WHERE id = %s', (user_id,))
+    user_data = cursor.fetchone()
     conn.close()
     if user_data:
         return User(id=user_data['id'], username=user_data['username'], password_hash=user_data['password_hash'])
@@ -41,7 +44,9 @@ def login():
         username = request.form['username']
         password = request.form['password']
         conn = get_db_connection()
-        user_data = conn.execute('SELECT * FROM users WHERE username = ?', (username,)).fetchone()
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+        cursor.execute('SELECT * FROM users WHERE username = %s', (username,))
+        user_data = cursor.fetchone()
         conn.close()
         user = User(id=user_data['id'], username=user_data['username'], password_hash=user_data['password_hash']) if user_data else None
         if user and check_password_hash(user.password_hash, password):
@@ -59,14 +64,16 @@ def register():
         username = request.form['username']
         password = request.form['password']
         conn = get_db_connection()
-        user_exists = conn.execute('SELECT id FROM users WHERE username = ?', (username,)).fetchone()
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+        cursor.execute('SELECT id FROM users WHERE username = %s', (username,))
+        user_exists = cursor.fetchone()
         if user_exists:
             flash('Username already exists.')
             conn.close()
             return redirect(url_for('register'))
 
         password_hash = generate_password_hash(password, method='pbkdf2:sha256')
-        conn.execute('INSERT INTO users (username, password_hash) VALUES (?, ?)', (username, password_hash))
+        cursor.execute('INSERT INTO users (username, password_hash) VALUES (%s, %s)', (username, password_hash))
         conn.commit()
         conn.close()
         flash('Registration successful! Please log in.')
@@ -80,44 +87,38 @@ def logout():
     return redirect(url_for('login'))
 
 # Database setup
-# In a production environment (like Render), set the DATABASE_URL environment variable
-# to the path of your persistent disk, e.g., /var/data/merge_data.sqlite
-DATABASE_URL = os.environ.get('DATABASE_URL')
-if DATABASE_URL:
-    DB_PATH = DATABASE_URL
-else:
-    # Local development uses the SQLite file in the repo
-    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-    DB_PATH = os.path.join(BASE_DIR, '..', 'merge_data.sqlite')
+DATABASE_URL = os.environ.get('DATABASE_URL', "postgresql://postgres:admin@localhost:5432/postgres")
 
 def get_db_connection():
-    """Establishes a connection to the SQLite database."""
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
+    """Establishes a connection to the PostgreSQL database."""
+    conn = psycopg2.connect(DATABASE_URL)
     return conn
 
 def init_db():
     """Initializes the database and creates a test user if not present."""
     conn = get_db_connection()
-    # Check if the users table exists
     cursor = conn.cursor()
-    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='users';")
-    if cursor.fetchone() is None:
+    # Check if the users table exists
+    cursor.execute("SELECT to_regclass('public.users');")
+    if cursor.fetchone()[0] is None:
         # Create the users table if it doesn't exist
-        conn.execute('''
+        cursor.execute('''
             CREATE TABLE users (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id SERIAL PRIMARY KEY,
                 username TEXT NOT NULL UNIQUE,
                 password_hash TEXT NOT NULL
             );
         ''')
+        conn.commit()
 
     # Check if the test user exists
-    user = conn.execute('SELECT id FROM users WHERE username = ?', ('testuser',)).fetchone()
+    cursor.execute('SELECT id FROM users WHERE username = %s', ('testuser',))
+    user = cursor.fetchone()
     if not user:
         password_hash = generate_password_hash('password', method='pbkdf2:sha256')
-        conn.execute('INSERT INTO users (username, password_hash) VALUES (?, ?)', ('testuser', password_hash))
+        cursor.execute('INSERT INTO users (username, password_hash) VALUES (%s, %s)', ('testuser', password_hash))
         conn.commit()
+    cursor.close()
     conn.close()
 
 
@@ -138,14 +139,17 @@ def search():
         return jsonify([])
 
     conn = get_db_connection()
-    # Use DISTINCT to avoid duplicate symbols from the merged_data table
-    symbols = conn.execute(
-        "SELECT DISTINCT stock FROM merged_data WHERE stock LIKE ? ORDER BY stock",
+    cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+    # Use DISTINCT to avoid duplicate symbols from the raw_data table
+    cursor.execute(
+        "SELECT DISTINCT symbol FROM raw_data WHERE symbol LIKE %s ORDER BY symbol",
         (query.upper() + '%',)
-    ).fetchall()
+    )
+    symbols = cursor.fetchall()
+    cursor.close()
     conn.close()
 
-    return jsonify([row['stock'] for row in symbols])
+    return jsonify([row['symbol'] for row in symbols])
 
 @app.route('/api/ohlc')
 def ohlc():
@@ -154,16 +158,32 @@ def ohlc():
         return jsonify({"error": "Symbol parameter is required"}), 400
 
     conn = get_db_connection()
+    cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
     # Order by date to ensure data is chronological for charting
     # Fetch all relevant columns, including corporate actions
-    ohlc_data = conn.execute(
-        "SELECT date, open, high, low, close, action_type, value FROM merged_data WHERE stock = ? ORDER BY date",
+    cursor.execute(
+        "SELECT date, open, high, low, close, dividends, stock_splits FROM raw_data WHERE symbol = %s ORDER BY date",
         (symbol.upper(),)
-    ).fetchall()
+    )
+    ohlc_data = cursor.fetchall()
+    cursor.close()
     conn.close()
 
-    # Convert rows to a list of dictionaries
-    data = [dict(row) for row in ohlc_data]
+    # Convert rows to a list of dictionaries and handle corporate actions
+    data = []
+    for row in ohlc_data:
+        row_dict = dict(row)
+        # Adapt dividends and stock_splits to the expected format
+        row_dict['action_type'] = None
+        row_dict['value'] = None
+        if row_dict['dividends'] is not None and row_dict['dividends'] > 0:
+            row_dict['action_type'] = 'dividend'
+            row_dict['value'] = row_dict['dividends']
+        elif row_dict['stock_splits'] is not None and row_dict['stock_splits'] > 0:
+            row_dict['action_type'] = 'split'
+            row_dict['value'] = row_dict['stock_splits']
+        data.append(row_dict)
+
     return jsonify(data)
 
 @app.route('/api/calculate_investment', methods=['POST'])
@@ -178,11 +198,14 @@ def calculate_investment():
         return jsonify({"error": "Missing required parameters"}), 400
 
     conn = get_db_connection()
+    cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
     # Fetch all data for the stock within the specified date range
-    history = conn.execute(
-        "SELECT date, open, high, low, close, action_type, value FROM merged_data WHERE stock = ? AND date BETWEEN ? AND ? ORDER BY date",
+    cursor.execute(
+        "SELECT date, open, high, low, close, dividends, stock_splits FROM raw_data WHERE symbol = %s AND date BETWEEN %s AND %s ORDER BY date",
         (symbol.upper(), from_date, to_date)
-    ).fetchall()
+    )
+    history = cursor.fetchall()
+    cursor.close()
     conn.close()
 
     if not history:
@@ -200,10 +223,9 @@ def calculate_investment():
     # Process historical data
     for i, day in enumerate(history):
         # Data source is pre-adjusted for splits/bonuses, so we only handle dividends.
-        action = day['action_type'].lower() if day['action_type'] else ''
-        if action == 'dividend':
+        if day['dividends'] is not None and day['dividends'] > 0:
             # Calculate cash dividend and add to reinvestment pool and total tracker
-            dividend_cash = shares * day['value']
+            dividend_cash = shares * day['dividends']
             total_dividends_received += dividend_cash
             cash += dividend_cash
 
@@ -264,19 +286,23 @@ def calculate_scanner_performance(investment_amount, from_date, to_date, stock_s
     Allows sorting by specified column.
     """
     conn = get_db_connection()
-    if stock_symbol:
-        stocks = conn.execute("SELECT DISTINCT stock FROM merged_data WHERE stock = ?", (stock_symbol.upper(),)).fetchall()
-    else:
-        stocks = conn.execute("SELECT DISTINCT stock FROM merged_data").fetchall()
+    cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
 
+    if stock_symbol:
+        cursor.execute("SELECT DISTINCT symbol FROM raw_data WHERE symbol = %s", (stock_symbol.upper(),))
+    else:
+        cursor.execute("SELECT DISTINCT symbol FROM raw_data")
+
+    stocks = cursor.fetchall()
     results = []
 
     for stock_row in stocks:
-        symbol = stock_row['stock']
-        history = conn.execute(
-            "SELECT date, close, action_type, value FROM merged_data WHERE stock = ? AND date BETWEEN ? AND ? ORDER BY date",
+        symbol = stock_row['symbol']
+        cursor.execute(
+            "SELECT date, close, dividends FROM raw_data WHERE symbol = %s AND date BETWEEN %s AND %s ORDER BY date",
             (symbol, from_date, to_date)
-        ).fetchall()
+        )
+        history = cursor.fetchall()
 
         if not history or not history[0]['close']:
             continue
@@ -288,9 +314,8 @@ def calculate_scanner_performance(investment_amount, from_date, to_date, stock_s
         total_dividends = 0
 
         for day in history:
-            action = day['action_type'].lower() if day['action_type'] else ''
-            if action == 'dividend' and day['value'] > 0:
-                dividend_cash = shares * day['value']
+            if day['dividends'] is not None and day['dividends'] > 0:
+                dividend_cash = shares * day['dividends']
                 total_dividends += dividend_cash
                 cash += dividend_cash
             if cash > 0 and day['close'] > 0:
@@ -342,6 +367,7 @@ def calculate_scanner_performance(investment_amount, from_date, to_date, stock_s
             "total_dividends": total_dividends
         })
 
+    cursor.close()
     conn.close()
 
     # Add negative years for volatility sorting
@@ -372,4 +398,5 @@ def calculate_scanner_performance(investment_amount, from_date, to_date, stock_s
     return sorted_results
 
 if __name__ == '__main__':
+    init_db()
     app.run(debug=True, port=5001)

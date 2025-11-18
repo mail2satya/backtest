@@ -6,3 +6,4 @@ Flask-Login
 Flask-WTF
 gunicorn
 yfinance
+psycopg2-binary
