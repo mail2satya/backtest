@@ -212,7 +212,7 @@ def calculate_investment():
         return jsonify({"error": "No data found for the given stock and date"}), 404
 
     # Initial investment
-    initial_price = history[0]['close']
+    initial_price = float(history[0]['close'])
     if initial_price == 0:
         return jsonify({"error": "Initial price is zero, cannot calculate investment"}), 400
 
@@ -223,22 +223,22 @@ def calculate_investment():
     # Process historical data
     for i, day in enumerate(history):
         # Data source is pre-adjusted for splits/bonuses, so we only handle dividends.
-        if day['dividends'] is not None and day['dividends'] > 0:
+        if day['dividends'] is not None and float(day['dividends']) > 0:
             # Calculate cash dividend and add to reinvestment pool and total tracker
-            dividend_cash = shares * day['dividends']
+            dividend_cash = shares * float(day['dividends'])
             total_dividends_received += dividend_cash
             cash += dividend_cash
 
         # Reinvest cash from dividends on the same day
         if cash > 0:
-            reinvestment_price = day['close']
+            reinvestment_price = float(day['close'])
             if reinvestment_price > 0:
                 additional_shares = cash / reinvestment_price
                 shares += additional_shares
                 cash = 0  # Reset cash after reinvesting
 
     # Calculate final value
-    final_price = history[-1]['close']
+    final_price = float(history[-1]['close'])
     final_value = shares * final_price
 
     # Calculate CAGR
@@ -254,7 +254,7 @@ def calculate_investment():
         "final_value": round(final_value, 2),
         "start_date": history[0]['date'],
         "end_date": history[-1]['date'],
-        "start_price": history[0]['close'],
+        "start_price": float(history[0]['close']),
         "end_price": final_price,
         "total_dividends": round(total_dividends_received, 2),
         "cagr": round(cagr * 100, 2)
@@ -308,21 +308,21 @@ def calculate_scanner_performance(investment_amount, from_date, to_date, stock_s
             continue
 
         # --- Standard Performance Calculation ---
-        initial_price = history[0]['close']
+        initial_price = float(history[0]['close'])
         shares = investment_amount / initial_price
         cash = 0
         total_dividends = 0
 
         for day in history:
-            if day['dividends'] is not None and day['dividends'] > 0:
-                dividend_cash = shares * day['dividends']
+            if day['dividends'] is not None and float(day['dividends']) > 0:
+                dividend_cash = shares * float(day['dividends'])
                 total_dividends += dividend_cash
                 cash += dividend_cash
-            if cash > 0 and day['close'] > 0:
-                shares += cash / day['close']
+            if cash > 0 and float(day['close']) > 0:
+                shares += cash / float(day['close'])
                 cash = 0
 
-        final_price = history[-1]['close']
+        final_price = float(history[-1]['close'])
         final_value = shares * final_price
 
         start_dt = datetime.strptime(history[0]['date'], '%Y-%m-%d')
@@ -345,8 +345,8 @@ def calculate_scanner_performance(investment_amount, from_date, to_date, stock_s
             if len(year_days) < 2:
                 continue
 
-            year_start_price = year_days[0]['close']
-            year_end_price = year_days[-1]['close']
+            year_start_price = float(year_days[0]['close'])
+            year_end_price = float(year_days[-1]['close'])
 
             if year_start_price > 0:
                 performance = ((year_end_price / year_start_price) - 1) * 100
