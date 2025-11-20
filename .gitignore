@@ -11,3 +11,6 @@ __pycache__/
 # Configuration files
 utils/config.py
 utils/access_token.json
+
+# Log files
+*.log

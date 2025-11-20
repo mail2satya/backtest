@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Movement Scanner{% endblock %}
+{% block title %}Movement Performance Scanner{% endblock %}
 
 {% block head %}
     <style>
@@ -16,26 +16,32 @@
         .results-table th { background-color: #f2f2f2; }
         .loader { text-align: center; font-size: 18px; display: none; }
         .error { color: red; text-align: center; }
+        .performance-dots { display: flex; flex-wrap: wrap; align-items: center; }
+        .dot { width: 15px; height: 15px; border-radius: 50%; margin: 2px; position: relative; cursor: pointer; background-image: radial-gradient(circle at 50% 120%, #ffffff 0%, rgba(255, 255, 255, 0) 70%); box-shadow: 0 2px 4px rgba(0,0,0,0.2); }
+        .dot-green { background-color: #28a745; }
+        .dot-red { background-color: #dc3545; }
+        .dot .tooltip { visibility: hidden; width: 120px; background-color: #333; color: #fff; text-align: center; border-radius: 6px; padding: 5px 0; position: absolute; z-index: 1; bottom: 125%; left: 50%; margin-left: -60px; opacity: 0; transition: opacity 0.3s; }
+        .dot:hover .tooltip { visibility: visible; opacity: 1; }
     </style>
 {% endblock %}
 
 {% block content %}
-    <h1>Movement Scanner</h1>
+    <h1>Movement Performance Scanner</h1>
     <div class="form-container">
         <form id="scanner-form" method="POST">
             <div class="form-group">
-                <label for="from_date">From Date</label>
-                <input type="date" id="from_date" name="from_date" value="{{ request.form.from_date }}" required>
+                <label for="trigger_date">Trigger Date</label>
+                <input type="date" id="trigger_date" name="trigger_date" value="{{ trigger_date or '' }}" required>
             </div>
             <div class="form-group">
-                <label for="to_date">To Date</label>
-                <input type="date" id="to_date" name="to_date" value="{{ request.form.to_date }}" required>
+                <label for="days_to_track">Days to Track</label>
+                <input type="number" id="days_to_track" name="days_to_track" value="{{ days_to_track or 5 }}" min="1" max="30" required>
             </div>
             <div class="form-group">
                 <label for="scan_type">Scan Type</label>
                 <select id="scan_type" name="scan_type">
-                    <option value="bullish">Bullish</option>
-                    <option value="bearish">Bearish</option>
+                    <option value="bullish" {% if scan_type == 'bullish' %}selected{% endif %}>Bullish Trigger</option>
+                    <option value="bearish" {% if scan_type == 'bearish' %}selected{% endif %}>Bearish Trigger</option>
                 </select>
             </div>
             <button type="submit">Scan</button>
@@ -43,7 +49,7 @@
     </div>
 
     <div id="loader" class="loader">
-        <p>Calculating... This might take a few moments.</p>
+        <p>Scanning for triggered stocks and tracking performance... This might take a moment.</p>
     </div>
 
     {% if error %}
@@ -51,17 +57,30 @@
     {% endif %}
 
     {% if results %}
-    <h2>Scan Results</h2>
+    <h2>Scan Results for {{ trigger_date }}</h2>
+    <p>Found {{ results|length }} stocks with a {{ scan_type }} trigger. Showing performance for the next {{ days_to_track }} trading days.</p>
     <table class="results-table">
         <thead>
             <tr>
-                <th>Stock Symbol</th>
+                <th>Stock</th>
+                <th>Trigger Close (INR)</th>
+                <th>Subsequent Daily Performance (%)</th>
             </tr>
         </thead>
         <tbody>
-            {% for symbol in results %}
+            {% for result in results %}
             <tr>
-                <td>{{ symbol }}</td>
+                <td>{{ result.stock }}</td>
+                <td>{{ "%.2f"|format(result.trigger_close) }}</td>
+                <td>
+                    <div class="performance-dots">
+                        {% for day_perf in result.performance %}
+                            <div class="dot {{ 'dot-green' if day_perf.return >= 0 else 'dot-red' }}">
+                                <span class="tooltip">{{ day_perf.date }}: {{ "%.2f"|format(day_perf.return) }}%</span>
+                            </div>
+                        {% endfor %}
+                    </div>
+                </td>
             </tr>
             {% endfor %}
         </tbody>
@@ -72,5 +91,13 @@
         document.getElementById('scanner-form').addEventListener('submit', function() {
             document.getElementById('loader').style.display = 'block';
         });
+
+        // Set default trigger date to yesterday if not already set
+        if (!document.getElementById('trigger_date').value) {
+            const today = new Date();
+            const yesterday = new Date(today);
+            yesterday.setDate(yesterday.getDate() - 1);
+            document.getElementById('trigger_date').value = yesterday.toISOString().split('T')[0];
+        }
     </script>
 {% endblock %}
