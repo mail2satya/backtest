@@ -438,46 +438,47 @@ def calculate_movement_performance(trigger_date, scan_type, days_to_track):
         return []
 
     query = f"""
-        WITH lagged_data AS (
-            SELECT
-                symbol, date, open, close,
-                LAG(close, 1) OVER (PARTITION BY symbol ORDER BY date) AS prev_day_close
-            FROM raw_data
-        ),
-        triggered_stocks AS (
-            SELECT
-                symbol,
-                date AS trigger_date,
-                close AS trigger_close
-            FROM lagged_data AS lagged
-            WHERE lagged.date = %s
-                {condition}
-        ),
-        performance_days AS (
-            SELECT
-                ts.symbol,
-                ts.trigger_date,
-                ts.trigger_close,
-                rd.date,
-                rd.open,
-                rd.close,
-                ROW_NUMBER() OVER (PARTITION BY ts.symbol ORDER BY rd.date) AS day_num
-            FROM triggered_stocks ts
-            JOIN raw_data rd ON ts.symbol = rd.symbol
-            WHERE rd.date >= ts.trigger_date
-        )
+    WITH lagged_data AS (
+        SELECT
+            symbol, date, open, close,
+            LAG(close, 1) OVER (PARTITION BY symbol ORDER BY date) AS prev_day_close
+        FROM raw_data
+    ),
+    triggered_stocks AS (
         SELECT
             symbol,
-            trigger_date,
-            date,
-            open,
-            close,
-            (close - open) AS daily_move,
-            ROUND((close - open) / open * 100, 2) AS daily_percentage
-        FROM performance_days
-        WHERE day_num <= %s
-        ORDER BY symbol, date;
-    """
+            date AS trigger_date,
+            close AS trigger_close
+        FROM lagged_data AS lagged
+        WHERE lagged.date = %s
+            {condition}
+    ),
+    performance_days AS (
+        SELECT
+            ts.symbol,
+            ts.trigger_date,
+            ts.trigger_close,
+            rd.date,
+            rd.open,
+            rd.close,
+            ROW_NUMBER() OVER (PARTITION BY ts.symbol ORDER BY rd.date) AS day_num
+        FROM triggered_stocks ts
+        JOIN raw_data rd ON ts.symbol = rd.symbol
+        WHERE rd.date >= ts.trigger_date
+    )
+    SELECT
+        symbol,
+        trigger_date,
+        trigger_close,     -- FIXED
+        date,
+        open,
+        close,
+        (close - open) AS daily_move,
+        ROUND((close - open) / open * 100, 2) AS daily_percentage
+    FROM performance_days
+    WHERE day_num <= %s
+    ORDER BY symbol, date;
+"""
 
     cursor.execute(query, (trigger_date, days_to_track))
     result = cursor.fetchall()
