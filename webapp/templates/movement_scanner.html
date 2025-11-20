@@ -56,35 +56,40 @@
         <p class="error">{{ error }}</p>
     {% endif %}
 
-    {% if results %}
-    <h2>Scan Results for {{ trigger_date }}</h2>
-    <p>Found {{ results|length }} stocks with a {{ scan_type }} trigger. Showing performance for the next {{ days_to_track }} trading days.</p>
-    <table class="results-table">
-        <thead>
-            <tr>
-                <th>Stock</th>
-                <th>Trigger Close (INR)</th>
-                <th>Subsequent Daily Performance (%)</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for result in results %}
-            <tr>
-                <td>{{ result.stock }}</td>
-                <td>{{ "%.2f"|format(result.trigger_close) }}</td>
-                <td>
-                    <div class="performance-dots">
-                        {% for day_perf in result.performance %}
-                            <div class="dot {{ 'dot-green' if day_perf.return >= 0 else 'dot-red' }}">
-                                <span class="tooltip">{{ day_perf.date }}: {{ "%.2f"|format(day_perf.return) }}%</span>
+    {% if results is not none %}
+        {% if results %}
+            <h2>Scan Results for {{ trigger_date }}</h2>
+            <p>Found {{ results|length }} stocks with a {{ scan_type }} trigger. Showing performance for the next {{ days_to_track }} trading days.</p>
+            <table class="results-table">
+                <thead>
+                    <tr>
+                        <th>Stock</th>
+                        <th>Trigger Close (INR)</th>
+                        <th>Subsequent Daily Performance (%)</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for result in results %}
+                    <tr>
+                        <td>{{ result.stock }}</td>
+                        <td>{{ "%.2f"|format(result.trigger_close) }}</td>
+                        <td>
+                            <div class="performance-dots">
+                                {% for day_perf in result.performance %}
+                                    <div class="dot {{ 'dot-green' if day_perf.return >= 0 else 'dot-red' }}">
+                                        <span class="tooltip">{{ day_perf.date }}: {{ "%.2f"|format(day_perf.return) }}%</span>
+                                    </div>
+                                {% endfor %}
                             </div>
-                        {% endfor %}
-                    </div>
-                </td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        {% else %}
+            <h2>Scan Results for {{ trigger_date }}</h2>
+            <p>No stocks found matching the '{{ scan_type }}' trigger criteria for the selected date.</p>
+        {% endif %}
     {% endif %}
 
     <script>
