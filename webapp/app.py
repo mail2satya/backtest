@@ -410,9 +410,6 @@ def movement_scanner():
 
         results = calculate_movement_performance(trigger_date, scan_type, days_to_track)
 
-        # Convert DictRow objects to dictionaries
-        results = [dict(row) for row in results]
-
         return render_template('movement_scanner.html', results=results, trigger_date=trigger_date, days_to_track=days_to_track, scan_type=scan_type)
 
     return render_template('movement_scanner.html')
