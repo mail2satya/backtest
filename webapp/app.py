@@ -397,6 +397,52 @@ def calculate_scanner_performance(investment_amount, from_date, to_date, stock_s
 
     return sorted_results
 
+@app.route('/movement_scanner', methods=['GET', 'POST'])
+@login_required
+def movement_scanner():
+    if request.method == 'POST':
+        from_date = request.form.get('from_date')
+        to_date = request.form.get('to_date')
+        scan_type = request.form.get('scan_type')
+
+        if not from_date or not to_date:
+            return render_template('movement_scanner.html', error="Please select both a start and end date.")
+
+        results = calculate_movement_scan(from_date, to_date, scan_type)
+        return render_template('movement_scanner.html', results=results)
+
+    return render_template('movement_scanner.html')
+
+def calculate_movement_scan(from_date, to_date, scan_type):
+    """
+    Calculates stock movement based on the selected scan type using an efficient self-join query.
+    """
+    conn = get_db_connection()
+    cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+
+    query = """
+        SELECT d1.symbol
+        FROM raw_data AS d1
+        JOIN raw_data AS d2 ON d1.symbol = d2.symbol
+        WHERE d1.date = %s AND d2.date = %s
+    """
+
+    if scan_type == 'bullish':
+        query += " AND d1.open < d2.open AND d1.open < d2.close"
+    elif scan_type == 'bearish':
+        query += " AND d1.open > d2.open AND d1.open > d2.close"
+    else:
+        # If scan_type is not 'bullish' or 'bearish', return no results.
+        return []
+
+    cursor.execute(query, (from_date, to_date))
+    results = [row['symbol'] for row in cursor.fetchall()]
+
+    cursor.close()
+    conn.close()
+
+    return results
+
 if __name__ == '__main__':
     init_db()
     app.run(debug=True, port=5001)
