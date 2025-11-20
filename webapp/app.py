@@ -401,47 +401,90 @@ def calculate_scanner_performance(investment_amount, from_date, to_date, stock_s
 @login_required
 def movement_scanner():
     if request.method == 'POST':
-        from_date = request.form.get('from_date')
-        to_date = request.form.get('to_date')
-        scan_type = request.form.get('scan_type')
+        trigger_date = request.form.get('trigger_date')
+        days_to_track = int(request.form.get('days_to_track', 5))
+        scan_type = request.form.get('scan_type', 'bullish')
 
-        if not from_date or not to_date:
-            return render_template('movement_scanner.html', error="Please select both a start and end date.")
+        if not trigger_date:
+            return render_template('movement_scanner.html', error="Please select a trigger date.")
 
-        results = calculate_movement_scan(from_date, to_date, scan_type)
-        return render_template('movement_scanner.html', results=results)
+        results = calculate_movement_performance(trigger_date, scan_type, days_to_track)
+        return render_template('movement_scanner.html', results=results, trigger_date=trigger_date, days_to_track=days_to_track, scan_type=scan_type)
 
     return render_template('movement_scanner.html')
 
-def calculate_movement_scan(from_date, to_date, scan_type):
+def calculate_movement_performance(trigger_date, scan_type, days_to_track):
     """
-    Calculates stock movement based on the selected scan type using an efficient self-join query.
+    Finds stocks based on a trigger pattern and tracks their performance for a number of subsequent days.
     """
     conn = get_db_connection()
     cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
 
-    query = """
-        SELECT d1.symbol
-        FROM raw_data AS d1
-        JOIN raw_data AS d2 ON d1.symbol = d2.symbol
-        WHERE d1.date = %s AND d2.date = %s
-    """
-
+    condition = ""
     if scan_type == 'bullish':
-        query += " AND d1.open < d2.open AND d1.open < d2.close"
+        condition = "AND lagged.open > lagged.prev_day_open AND lagged.close > lagged.prev_day_open"
     elif scan_type == 'bearish':
-        query += " AND d1.open > d2.open AND d1.open > d2.close"
+        condition = "AND lagged.open < lagged.prev_day_open AND lagged.close < lagged.prev_day_open"
     else:
-        # If scan_type is not 'bullish' or 'bearish', return no results.
         return []
 
-    cursor.execute(query, (from_date, to_date))
-    results = [row['symbol'] for row in cursor.fetchall()]
+    query = f"""
+        WITH triggered_stocks AS (
+            WITH lagged_data AS (
+                SELECT
+                    symbol, date, open, close,
+                    LAG(open, 1) OVER (PARTITION BY symbol ORDER BY date) as prev_day_open
+                FROM raw_data
+            )
+            SELECT
+                symbol, date AS trigger_date, close AS trigger_close
+            FROM lagged_data AS lagged
+            WHERE lagged.date = %s {condition}
+        ),
+        performance_days AS (
+            SELECT
+                ts.symbol, ts.trigger_date, ts.trigger_close,
+                rd.date, rd.close,
+                ROW_NUMBER() OVER (PARTITION BY ts.symbol ORDER BY rd.date) as day_num
+            FROM triggered_stocks ts
+            JOIN raw_data rd ON ts.symbol = rd.symbol
+            WHERE rd.date >= ts.trigger_date
+        )
+        SELECT
+            symbol, trigger_date, trigger_close, date, close
+        FROM performance_days
+        WHERE day_num <= %s
+        ORDER BY symbol, date;
+    """
 
+    cursor.execute(query, (trigger_date, days_to_track + 1))
+    all_data = cursor.fetchall()
     cursor.close()
     conn.close()
 
-    return results
+    results = {}
+    for row in all_data:
+        symbol = row['symbol']
+        if symbol not in results:
+            results[symbol] = {
+                "stock": symbol,
+                "trigger_date": row['trigger_date'].strftime('%Y-%m-%d'),
+                "trigger_close": float(row['trigger_close']),
+                "performance": []
+            }
+
+        if row['date'] > row['trigger_date']:
+            base_price = results[symbol]['trigger_close']
+            current_price = float(row['close']) if row['close'] is not None else 0
+            performance_pct = ((current_price / base_price) - 1) * 100 if base_price > 0 else 0
+
+            results[symbol]['performance'].append({
+                "date": row['date'].strftime('%Y-%m-%d'),
+                "return": performance_pct
+            })
+
+    return list(results.values())
+
 
 if __name__ == '__main__':
     init_db()
