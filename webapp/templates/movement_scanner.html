@@ -76,7 +76,7 @@
                         <td>
                             <div class="performance-dots">
                                 {% for day_perf in result.performance %}
-                                    <div class="dot {{ 'dot-green' if day_perf.return >= 0 else 'dot-red' }}">
+                                    <div class="dot {{ 'dot-green' if day_perf.intraday_pattern == 'bullish' else 'dot-red' }}">
                                         <span class="tooltip">{{ day_perf.date }}: {{ "%.2f"|format(day_perf.return) }}%</span>
                                     </div>
                                 {% endfor %}
