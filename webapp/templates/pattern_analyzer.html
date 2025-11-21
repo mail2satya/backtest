@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+
+{% block title %}Pattern Success Rate Analyzer{% endblock %}
+
+{% block head %}
+    <style>
+        .form-container { background-color: #f9f9f9; padding: 20px; border-radius: 8px; margin-bottom: 20px; }
+        .form-container form { display: flex; flex-wrap: wrap; gap: 20px; align-items: flex-end; }
+        .form-container .form-group { display: flex; flex-direction: column; }
+        .form-container label { margin-bottom: 5px; font-weight: bold; }
+        .form-container input, .form-container select { padding: 8px; border: 1px solid #ccc; border-radius: 4px; }
+        .form-container button { padding: 10px 20px; border: none; background-color: #007bff; color: white; border-radius: 5px; cursor: pointer; }
+        .form-container button:hover { background-color: #0056b3; }
+        .results-container { margin-top: 20px; padding: 20px; background-color: #e9ecef; border-radius: 8px; }
+        .loader { text-align: center; font-size: 18px; display: none; }
+        .error { color: red; text-align: center; }
+    </style>
+{% endblock %}
+
+{% block content %}
+    <h1>Pattern Success Rate Analyzer</h1>
+    <p>This tool backtests a trigger pattern over a selected date range to see how often it's followed by two consecutive days of the desired outcome (e.g., two green candles after a bullish trigger).</p>
+
+    <div class="form-container">
+        <form id="analyzer-form" method="POST">
+            <div class="form-group">
+                <label for="from_date">From Date</label>
+                <input type="date" id="from_date" name="from_date" value="{{ from_date or '' }}" required>
+            </div>
+            <div class="form-group">
+                <label for="to_date">To Date</label>
+                <input type="date" id="to_date" name="to_date" value="{{ to_date or '' }}" required>
+            </div>
+            <div class="form-group">
+                <label for="scan_type">Pattern to Analyze</label>
+                <select id="scan_type" name="scan_type">
+                    <option value="bullish" {% if scan_type == 'bullish' %}selected{% endif %}>Bullish Trigger</option>
+                    <option value="bearish" {% if scan_type == 'bearish' %}selected{% endif %}>Bearish Trigger</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="stock_symbol">Stock Symbol (Optional)</label>
+                <input type="text" id="stock_symbol" name="stock_symbol" value="{{ stock_symbol or '' }}" placeholder="e.g., INFY.NS">
+            </div>
+            <button type="submit">Analyze</button>
+        </form>
+    </div>
+
+    <div id="loader" class="loader">
+        <p>Analyzing pattern success rate... This might take a moment, especially for long date ranges.</p>
+    </div>
+
+    {% if error %}
+        <p class="error">{{ error }}</p>
+    {% endif %}
+
+    {% if result is not none %}
+        <div class="results-container">
+            <h2>Analysis Results</h2>
+            <p>
+                Between <strong>{{ from_date }}</strong> and <strong>{{ to_date }}</strong>
+                for <strong>{{ stock_symbol or 'all stocks' }}</strong>:
+            </p>
+            <ul>
+                <li>The '<strong>{{ scan_type }}</strong>' trigger pattern occurred <strong>{{ result.total_triggers }}</strong> times.</li>
+                <li>It was followed by two consecutive successful days <strong>{{ result.successful_outcomes }}</strong> times.</li>
+            </ul>
+            <h3>Success Rate: <strong>{{ "%.2f"|format(result.success_rate) }}%</strong></h3>
+        </div>
+    {% endif %}
+
+    <script>
+        document.getElementById('analyzer-form').addEventListener('submit', function() {
+            document.getElementById('loader').style.display = 'block';
+        });
+
+        // Set default dates if not already set
+        if (!document.getElementById('to_date').value) {
+            const today = new Date();
+            document.getElementById('to_date').value = today.toISOString().split('T')[0];
+        }
+        if (!document.getElementById('from_date').value) {
+            const lastMonth = new Date();
+            lastMonth.setMonth(lastMonth.getMonth() - 1);
+            document.getElementById('from_date').value = lastMonth.toISOString().split('T')[0];
+        }
+    </script>
+{% endblock %}

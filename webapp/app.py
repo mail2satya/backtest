@@ -396,18 +396,20 @@ def movement_scanner():
         scan_type = request.form.get('scan_type', 'bullish')
         min_price = float(request.form.get('min_price', 0))
         max_price = float(request.form.get('max_price', 10000))
+        stock_symbol = request.form.get('stock_symbol', None)
 
         if not trigger_date:
             return render_template('movement_scanner.html', error="Please select a trigger date.")
 
-        results = calculate_movement_performance(trigger_date, scan_type, days_to_track, min_price, max_price)
+        results = calculate_movement_performance(trigger_date, scan_type, days_to_track, min_price, max_price, stock_symbol)
 
         return render_template('movement_scanner.html', results=results, trigger_date=trigger_date, 
-                             days_to_track=days_to_track, scan_type=scan_type, min_price=min_price, max_price=max_price)
+                             days_to_track=days_to_track, scan_type=scan_type, min_price=min_price,
+                             max_price=max_price, stock_symbol=stock_symbol)
 
     return render_template('movement_scanner.html')
 
-def calculate_movement_performance(trigger_date, scan_type, days_to_track, min_price=0, max_price=10000):
+def calculate_movement_performance(trigger_date, scan_type, days_to_track, min_price=0, max_price=10000, stock_symbol=None):
     """
     Finds stocks based on trigger pattern (open and close above/below previous day's CLOSE price)
     and tracks their intraday pattern (bullish/bearish) for the next N days.
@@ -422,6 +424,13 @@ def calculate_movement_performance(trigger_date, scan_type, days_to_track, min_p
         condition = "AND open < prev_close AND close < prev_close"
     else:
         return []
+
+    # Add a filter for the stock symbol if one is provided
+    symbol_filter = ""
+    params = [trigger_date, min_price, max_price]
+    if stock_symbol:
+        symbol_filter = "AND symbol = %s"
+        params.append(stock_symbol.upper())
 
     query = """
     WITH lagged_data AS (
@@ -448,6 +457,7 @@ def calculate_movement_performance(trigger_date, scan_type, days_to_track, min_p
         WHERE date = %s
           AND open BETWEEN %s AND %s
           AND prev_close IS NOT NULL
+          {symbol_filter}
           {condition}
     ),
     performance_days AS (
@@ -487,9 +497,10 @@ def calculate_movement_performance(trigger_date, scan_type, days_to_track, min_p
     FROM performance_days
     WHERE day_num <= %s
     ORDER BY symbol, date;
-    """.format(condition=condition)
+    """.format(condition=condition, symbol_filter=symbol_filter)
 
-    cursor.execute(query, (trigger_date, min_price, max_price, days_to_track))
+    params.append(days_to_track)
+    cursor.execute(query, tuple(params))
     all_data = cursor.fetchall()
     cursor.close()
     conn.close()
@@ -537,6 +548,102 @@ def calculate_movement_performance(trigger_date, scan_type, days_to_track, min_p
         })
 
     return list(results.values())
+
+@app.route('/pattern_analyzer', methods=['GET', 'POST'])
+@login_required
+def pattern_analyzer():
+    if request.method == 'POST':
+        from_date = request.form.get('from_date')
+        to_date = request.form.get('to_date')
+        scan_type = request.form.get('scan_type', 'bullish')
+        stock_symbol = request.form.get('stock_symbol', None)
+
+        if not from_date or not to_date:
+            return render_template('pattern_analyzer.html', error="Please select both a start and end date.")
+
+        result = calculate_pattern_success_rate(from_date, to_date, scan_type, stock_symbol)
+
+        return render_template('pattern_analyzer.html', result=result, from_date=from_date,
+                             to_date=to_date, scan_type=scan_type, stock_symbol=stock_symbol)
+
+    return render_template('pattern_analyzer.html', result=None)
+
+def calculate_pattern_success_rate(from_date, to_date, scan_type, stock_symbol=None):
+    """
+    Analyzes the success rate of a given trigger pattern over a date range.
+    A 'success' is defined as two consecutive days following the trigger
+    that match the pattern's desired outcome (green candles for bullish, red for bearish).
+    """
+    conn = get_db_connection()
+    cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+
+    # Define the trigger condition
+    if scan_type == 'bullish':
+        trigger_condition = "d.open > d.prev_close AND d.close > d.prev_close"
+        outcome_condition = "(d.next_day1_close > d.next_day1_open AND d.next_day2_close > d.next_day2_open)"
+    elif scan_type == 'bearish':
+        trigger_condition = "d.open < d.prev_close AND d.close < d.prev_close"
+        outcome_condition = "(d.next_day1_close < d.next_day1_open AND d.next_day2_close < d.next_day2_open)"
+    else:
+        return {"total_triggers": 0, "successful_outcomes": 0, "success_rate": 0}
+
+    # Optional stock symbol filter
+    symbol_filter = ""
+    params = [from_date, to_date]
+    if stock_symbol and stock_symbol.strip():
+        symbol_filter = "AND d.symbol = %s"
+        params.append(stock_symbol.upper().strip())
+
+    query = f"""
+    WITH daily_data AS (
+        -- Calculate previous day's close and lead open/close for the next 2 days
+        SELECT
+            symbol,
+            date,
+            open,
+            close,
+            LAG(close, 1) OVER (PARTITION BY symbol ORDER BY date) AS prev_close,
+            LEAD(open, 1) OVER (PARTITION BY symbol ORDER BY date) AS next_day1_open,
+            LEAD(close, 1) OVER (PARTITION BY symbol ORDER BY date) AS next_day1_close,
+            LEAD(open, 2) OVER (PARTITION BY symbol ORDER BY date) AS next_day2_open,
+            LEAD(close, 2) OVER (PARTITION BY symbol ORDER BY date) AS next_day2_close
+        FROM raw_data
+    ),
+    triggered_days AS (
+        -- Identify all days that meet the trigger condition
+        SELECT
+            symbol,
+            date,
+            {outcome_condition} AS is_successful
+        FROM daily_data d
+        WHERE d.date BETWEEN %s AND %s
+          AND d.prev_close IS NOT NULL
+          AND d.next_day1_open IS NOT NULL AND d.next_day1_close IS NOT NULL
+          AND d.next_day2_open IS NOT NULL AND d.next_day2_close IS NOT NULL
+          AND {trigger_condition}
+          {symbol_filter}
+    )
+    -- Count total triggers and successful outcomes
+    SELECT
+        COUNT(*) AS total_triggers,
+        SUM(CASE WHEN is_successful THEN 1 ELSE 0 END) AS successful_outcomes
+    FROM triggered_days;
+    """
+
+    cursor.execute(query, tuple(params))
+    result = cursor.fetchone()
+    cursor.close()
+    conn.close()
+
+    total_triggers = result['total_triggers'] if result and result['total_triggers'] is not None else 0
+    successful_outcomes = result['successful_outcomes'] if result and result['successful_outcomes'] is not None else 0
+    success_rate = (successful_outcomes / total_triggers * 100) if total_triggers > 0 else 0
+
+    return {
+        "total_triggers": total_triggers,
+        "successful_outcomes": successful_outcomes,
+        "success_rate": success_rate
+    }
 
 if __name__ == '__main__':
     init_db()
