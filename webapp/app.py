@@ -2,7 +2,7 @@ from flask import Flask, jsonify, render_template, request, redirect, url_for, f
 import psycopg2
 import psycopg2.extras
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
 
@@ -48,8 +48,8 @@ def login():
         cursor.execute('SELECT * FROM users WHERE username = %s', (username,))
         user_data = cursor.fetchone()
         conn.close()
-        user = User(id=user_data['id'], username=user_data['username'], password_hash=user_data['password_hash']) if user_data else None
-        if user and check_password_hash(user.password_hash, password):
+        if user_data and check_password_hash(user_data['password_hash'], password):
+            user = User(id=user_data['id'], username=user_data['username'], password_hash=user_data['password_hash'])
             login_user(user)
             return redirect(url_for('dashboard'))
         else:
@@ -120,7 +120,6 @@ def init_db():
         conn.commit()
     cursor.close()
     conn.close()
-
 
 @app.route('/')
 @login_required
@@ -378,19 +377,10 @@ def calculate_scanner_performance(investment_amount, from_date, to_date, stock_s
     is_reverse = (sort_order == 'desc')
 
     # Define a primary sort key, with a secondary sort for volatility
-    def sort_key(x):
-        primary_key = x.get(sort_by, 0)
-        # For 'cagr', a higher value is better. For others, it might vary.
-        # The primary key will be handled by is_reverse.
-        return (primary_key, x['negative_years'])
-
-    # We handle the reverse logic manually for the primary key if it's descending.
-    # The secondary key (negative_years) should always be ascending (less is better).
     if sort_by in ['cagr', 'final_value', 'total_dividends']:
         sorted_results = sorted(results, key=lambda x: (x.get(sort_by, 0), x['negative_years']), reverse=is_reverse)
     else: # Default or other cases
         sorted_results = sorted(results, key=lambda x: (-x['cagr'], x['negative_years']))
-
 
     for i, result in enumerate(sorted_results):
         result['rank'] = i + 1
@@ -404,53 +394,65 @@ def movement_scanner():
         trigger_date = request.form.get('trigger_date')
         days_to_track = int(request.form.get('days_to_track', 5))
         scan_type = request.form.get('scan_type', 'bullish')
+        min_price = float(request.form.get('min_price', 0))
+        max_price = float(request.form.get('max_price', 10000))
 
         if not trigger_date:
             return render_template('movement_scanner.html', error="Please select a trigger date.")
 
-        results = calculate_movement_performance(trigger_date, scan_type, days_to_track)
+        results = calculate_movement_performance(trigger_date, scan_type, days_to_track, min_price, max_price)
 
-        return render_template('movement_scanner.html', results=results, trigger_date=trigger_date, days_to_track=days_to_track, scan_type=scan_type)
+        return render_template('movement_scanner.html', results=results, trigger_date=trigger_date, 
+                             days_to_track=days_to_track, scan_type=scan_type, min_price=min_price, max_price=max_price)
 
     return render_template('movement_scanner.html')
 
-def calculate_movement_performance(trigger_date, scan_type, days_to_track):
+def calculate_movement_performance(trigger_date, scan_type, days_to_track, min_price=0, max_price=10000):
     """
-    Finds stocks based on a trigger pattern and tracks their daily performance 
-    (daily % change = (close - open) / open * 100) for the next N days.
+    Finds stocks based on trigger pattern (open and close above/below previous day's CLOSE price)
+    and tracks their intraday pattern (bullish/bearish) for the next N days.
     """
-
     conn = get_db_connection()
     cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
 
-    # Trigger logic based on yesterday's CLOSE
+    # Trigger logic based on previous day's CLOSE price
     if scan_type == 'bullish':
         condition = """
-            AND lagged.open > lagged.prev_day_close 
-            AND lagged.close > lagged.prev_day_close
+            AND current.open > previous.close 
+            AND current.close > previous.close
         """
     elif scan_type == 'bearish':
         condition = """
-            AND lagged.open < lagged.prev_day_close 
-            AND lagged.close < lagged.prev_day_close
+            AND current.open < previous.close 
+            AND current.close < previous.close
         """
     else:
         return []
 
-    query = f"""
-    WITH lagged_data AS (
-        SELECT
-            symbol, date, open, close,
-            LAG(close, 1) OVER (PARTITION BY symbol ORDER BY date) AS prev_day_close
+    query = """
+    WITH previous_data AS (
+        SELECT 
+            symbol, date, open as prev_open, close as prev_close
+        FROM raw_data
+    ),
+    current_data AS (
+        SELECT 
+            symbol, date, open, close, high, low, volume
         FROM raw_data
     ),
     triggered_stocks AS (
-        SELECT
-            symbol,
-            date AS trigger_date,
-            close AS trigger_close
-        FROM lagged_data AS lagged
-        WHERE lagged.date = %s
+        SELECT 
+            current.symbol,
+            current.date AS trigger_date,
+            current.open AS trigger_open,
+            current.close AS trigger_close,
+            previous.prev_close AS prev_day_close,
+            (current.close - current.open) AS trigger_intraday_move
+        FROM current_data current
+        JOIN previous_data previous ON current.symbol = previous.symbol 
+            AND current.date = previous.date + INTERVAL '1 day'
+        WHERE current.date = %s
+            AND current.open BETWEEN %s AND %s
             {condition}
     ),
     performance_days AS (
@@ -458,34 +460,46 @@ def calculate_movement_performance(trigger_date, scan_type, days_to_track):
             ts.symbol,
             ts.trigger_date,
             ts.trigger_close,
+            ts.prev_day_close,
+            ts.trigger_intraday_move,
             rd.date,
             rd.open,
             rd.close,
+            rd.high,
+            rd.low,
+            rd.volume,
+            (rd.close - rd.open) AS intraday_move,
             ROW_NUMBER() OVER (PARTITION BY ts.symbol ORDER BY rd.date) AS day_num
         FROM triggered_stocks ts
         JOIN raw_data rd ON ts.symbol = rd.symbol
-        WHERE rd.date >= ts.trigger_date
+        WHERE rd.date > ts.trigger_date
     )
     SELECT
         symbol,
         trigger_date,
-        trigger_close,     -- FIXED
+        trigger_close,
+        prev_day_close,
+        trigger_intraday_move,
         date,
         open,
         close,
-        (close - open) AS daily_move,
-        ROUND((close - open) / open * 100, 2) AS daily_percentage
+        high,
+        low,
+        volume,
+        intraday_move,
+        ROUND((close - trigger_close) / trigger_close * 100, 2) AS performance_pct,
+        day_num
     FROM performance_days
     WHERE day_num <= %s
     ORDER BY symbol, date;
-"""
+    """.format(condition=condition)
 
-    cursor.execute(query, (trigger_date, days_to_track))
-    result = cursor.fetchall()
+    cursor.execute(query, (trigger_date, min_price, max_price, days_to_track))
+    all_data = cursor.fetchall()
     cursor.close()
     conn.close()
-    return result
 
+    # Process the data for template consumption
     results = {}
     for row in all_data:
         symbol = row['symbol']
@@ -494,21 +508,34 @@ def calculate_movement_performance(trigger_date, scan_type, days_to_track):
                 "stock": symbol,
                 "trigger_date": row['trigger_date'].strftime('%Y-%m-%d'),
                 "trigger_close": float(row['trigger_close']),
+                "prev_day_close": float(row['prev_day_close']),
+                "trigger_intraday_move": float(row['trigger_intraday_move']),
                 "performance": []
             }
 
-        if row['date'] > row['trigger_date']:
-            base_price = results[symbol]['trigger_close']
-            current_price = float(row['close']) if row['close'] is not None else 0
-            performance_pct = ((current_price / base_price) - 1) * 100 if base_price > 0 else 0
+        # Calculate performance from trigger date and determine intraday pattern
+        days_since_trigger = row['day_num']
+        current_price = float(row['close']) if row['close'] is not None else 0
+        trigger_price = results[symbol]['trigger_close']
+        
+        performance_pct = ((current_price / trigger_price) - 1) * 100 if trigger_price > 0 else 0
+        intraday_move = float(row['intraday_move'])
+        intraday_pattern = "bullish" if intraday_move > 0 else "bearish" if intraday_move < 0 else "neutral"
 
-            results[symbol]['performance'].append({
-                "date": row['date'].strftime('%Y-%m-%d'),
-                "return": performance_pct
-            })
+        results[symbol]['performance'].append({
+            "date": row['date'].strftime('%Y-%m-%d'),
+            "day": days_since_trigger,
+            "open": float(row['open']),
+            "close": current_price,
+            "high": float(row['high']),
+            "low": float(row['low']),
+            "volume": row['volume'],
+            "return": round(performance_pct, 2),
+            "intraday_move": intraday_move,
+            "intraday_pattern": intraday_pattern
+        })
 
     return list(results.values())
-
 
 if __name__ == '__main__':
     init_db()
