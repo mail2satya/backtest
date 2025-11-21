@@ -417,43 +417,38 @@ def calculate_movement_performance(trigger_date, scan_type, days_to_track, min_p
 
     # Trigger logic based on previous day's CLOSE price
     if scan_type == 'bullish':
-        condition = """
-            AND current.open > previous.prev_close
-            AND current.close > previous.prev_close
-        """
+        condition = "AND open > prev_close AND close > prev_close"
     elif scan_type == 'bearish':
-        condition = """
-            AND current.open < previous.prev_close
-            AND current.close < previous.prev_close
-        """
+        condition = "AND open < prev_close AND close < prev_close"
     else:
         return []
 
     query = """
-    WITH previous_data AS (
-        SELECT 
-            symbol, date, open as prev_open, close as prev_close
-        FROM raw_data
-    ),
-    current_data AS (
-        SELECT 
-            symbol, date, open, close, high, low, volume
+    WITH lagged_data AS (
+        SELECT
+            symbol,
+            date,
+            open,
+            close,
+            high,
+            low,
+            volume,
+            LAG(close, 1) OVER (PARTITION BY symbol ORDER BY date) AS prev_close
         FROM raw_data
     ),
     triggered_stocks AS (
-        SELECT 
-            current.symbol,
-            current.date AS trigger_date,
-            current.open AS trigger_open,
-            current.close AS trigger_close,
-            previous.prev_close AS prev_day_close,
-            (current.close - current.open) AS trigger_intraday_move
-        FROM current_data current
-        JOIN previous_data previous ON current.symbol = previous.symbol 
-            AND current.date = previous.date + INTERVAL '1 day'
-        WHERE current.date = %s
-            AND current.open BETWEEN %s AND %s
-            {condition}
+        SELECT
+            symbol,
+            date AS trigger_date,
+            open AS trigger_open,
+            close AS trigger_close,
+            prev_close AS prev_day_close,
+            (close - open) AS trigger_intraday_move
+        FROM lagged_data
+        WHERE date = %s
+          AND open BETWEEN %s AND %s
+          AND prev_close IS NOT NULL
+          {condition}
     ),
     performance_days AS (
         SELECT
