@@ -418,13 +418,13 @@ def calculate_movement_performance(trigger_date, scan_type, days_to_track, min_p
     # Trigger logic based on previous day's CLOSE price
     if scan_type == 'bullish':
         condition = """
-            AND current.open > previous.close 
-            AND current.close > previous.close
+            AND current.open > previous.prev_close
+            AND current.close > previous.prev_close
         """
     elif scan_type == 'bearish':
         condition = """
-            AND current.open < previous.close 
-            AND current.close < previous.close
+            AND current.open < previous.prev_close
+            AND current.close < previous.prev_close
         """
     else:
         return []
