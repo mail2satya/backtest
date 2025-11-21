@@ -508,25 +508,31 @@ def calculate_movement_performance(trigger_date, scan_type, days_to_track, min_p
                 "performance": []
             }
 
-        # Calculate performance from trigger date and determine intraday pattern
+        # Calculate performance from trigger date and determine intraday pattern for each performance day
         days_since_trigger = row['day_num']
+        open_price = float(row['open'])
         current_price = float(row['close']) if row['close'] is not None else 0
         trigger_price = results[symbol]['trigger_close']
         
         performance_pct = ((current_price / trigger_price) - 1) * 100 if trigger_price > 0 else 0
-        intraday_move = float(row['intraday_move'])
-        intraday_pattern = "bullish" if intraday_move > 0 else "bearish" if intraday_move < 0 else "neutral"
+
+        # Determine the intraday pattern based on the performance day's open and close
+        if current_price > open_price:
+            intraday_pattern = "bullish"
+        elif current_price < open_price:
+            intraday_pattern = "bearish"
+        else:
+            intraday_pattern = "neutral"
 
         results[symbol]['performance'].append({
             "date": row['date'].strftime('%Y-%m-%d'),
             "day": days_since_trigger,
-            "open": float(row['open']),
+            "open": open_price,
             "close": current_price,
             "high": float(row['high']),
             "low": float(row['low']),
             "volume": row['volume'],
             "return": round(performance_pct, 2),
-            "intraday_move": intraday_move,
             "intraday_pattern": intraday_pattern
         })
 
