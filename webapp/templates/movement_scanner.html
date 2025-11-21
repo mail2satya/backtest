@@ -44,6 +44,10 @@
                     <option value="bearish" {% if scan_type == 'bearish' %}selected{% endif %}>Bearish Trigger</option>
                 </select>
             </div>
+            <div class="form-group">
+                <label for="stock_symbol">Stock Symbol (Optional)</label>
+                <input type="text" id="stock_symbol" name="stock_symbol" value="{{ stock_symbol or '' }}" placeholder="e.g., INFY.NS">
+            </div>
             <button type="submit">Scan</button>
         </form>
     </div>
