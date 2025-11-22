@@ -1,23 +1,22 @@
 {% extends "base.html" %}
 
-{% block title %}Custom Pattern Analyzer{% endblock %}
+{% block title %}Advanced Pattern Analyzer{% endblock %}
 
 {% block head %}
     <style>
         .form-container { background-color: #f9f9f9; padding: 20px; border-radius: 8px; margin-bottom: 20px; }
         .form-group { display: flex; flex-direction: column; margin-bottom: 15px; }
         .form-container label { margin-bottom: 5px; font-weight: bold; }
-        .form-container input { padding: 8px; border: 1px solid #ccc; border-radius: 4px; }
+        .form-container input, .form-container select { padding: 8px; border: 1px solid #ccc; border-radius: 4px; }
 
         .rule-builder-section { border: 1px solid #ddd; padding: 15px; border-radius: 5px; margin-top: 20px; }
         .rule-builder-section h3 { margin-top: 0; }
-        .condition-row { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
-        .condition-row select { padding: 8px; border: 1px solid #ccc; border-radius: 4px; }
+        .condition-row, .logical-operator-row { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+        .condition-row input[type="number"] { width: 80px; }
         .remove-btn { padding: 5px 10px; background-color: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer; }
         .add-btn { padding: 8px 12px; background-color: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; margin-top: 10px; }
 
         #analyzer-form button[type="submit"] { padding: 10px 20px; border: none; background-color: #007bff; color: white; border-radius: 5px; cursor: pointer; margin-top: 20px; }
-        #analyzer-form button[type="submit"]:hover { background-color: #0056b3; }
 
         .results-container { margin-top: 20px; padding: 20px; background-color: #e9ecef; border-radius: 8px; }
         .loader { text-align: center; font-size: 18px; display: none; }
@@ -26,12 +25,12 @@
 {% endblock %}
 
 {% block content %}
-    <h1>Custom Pattern Analyzer</h1>
-    <p>Build your own custom trigger and success patterns to backtest their success rate over a selected date range.</p>
+    <h1>Advanced Pattern Analyzer</h1>
+    <p>Build complex, multi-day patterns using custom day offsets and AND/OR logic to backtest their success rate.</p>
 
     <div class="form-container">
         <form id="analyzer-form" method="POST">
-            <div style="display: flex; gap: 20px;">
+            <div style="display: flex; gap: 20px; flex-wrap: wrap;">
                 <div class="form-group">
                     <label for="from_date">From Date</label>
                     <input type="date" id="from_date" name="from_date" value="{{ from_date or '' }}" required>
@@ -46,21 +45,15 @@
                 </div>
             </div>
 
-            <!-- Trigger Conditions Builder -->
             <div class="rule-builder-section">
-                <h3>Trigger Conditions (Day T)</h3>
-                <div id="trigger-conditions-container">
-                    <!-- JS will populate this -->
-                </div>
+                <h3>Trigger Conditions</h3>
+                <div id="trigger-conditions-container"></div>
                 <button type="button" class="add-btn" onclick="addCondition('trigger')">Add Trigger Condition</button>
             </div>
 
-            <!-- Success Conditions Builder -->
             <div class="rule-builder-section">
                 <h3>Success Conditions</h3>
-                <div id="success-conditions-container">
-                    <!-- JS will populate this -->
-                </div>
+                <div id="success-conditions-container"></div>
                 <button type="button" class="add-btn" onclick="addCondition('success')">Add Success Condition</button>
             </div>
 
@@ -74,95 +67,120 @@
         <p class="error">{{ error }}</p>
     {% endif %}
 
-    {% if result is not none %}
+    {% if result is not none and not result.error %}
         <div class="results-container">
             <h2>Analysis Results</h2>
-             <p>
-                Between <strong>{{ from_date }}</strong> and <strong>{{ to_date }}</strong>
-                for <strong>{{ stock_symbol or 'all stocks' }}</strong>:
-            </p>
+            <p>Between <strong>{{ from_date }}</strong> and <strong>{{ to_date }}</strong> for <strong>{{ stock_symbol or 'all stocks' }}</strong>:</p>
             <ul>
                 <li>The custom trigger pattern occurred <strong>{{ result.total_triggers }}</strong> times.</li>
                 <li>The success conditions were met <strong>{{ result.successful_outcomes }}</strong> times.</li>
             </ul>
             <h3>Success Rate: <strong>{{ "%.2f"|format(result.success_rate) }}%</strong></h3>
         </div>
+    {% elif result and result.error %}
+        <p class="error">An error occurred: {{ result.error }}</p>
     {% endif %}
 
-    <!-- Template for a single condition row -->
-    <template id="condition-row-template">
-        <div class="condition-row">
-            <select name="field1">
-                <option value="open">Open</option>
-                <option value="high">High</option>
-                <option value="low">Low</option>
-                <option value="close">Close</option>
-            </select>
-            <select name="day1"></select>
-            <select name="operator">
-                <option value=">">&gt;</option>
-                <option value="<">&lt;</option>
-                <option value="=">=</option>
-            </select>
-            <select name="field2">
-                <option value="open">Open</option>
-                <option value="high">High</option>
-                <option value="low">Low</option>
-                <option value="close">Close</option>
-            </select>
-            <select name="day2"></select>
-            <button type="button" class="remove-btn" onclick="this.parentElement.remove()">Remove</button>
-        </div>
-    </template>
-
     <script>
-        let triggerCounter = 0;
-        let successCounter = 0;
+        // Store submitted conditions from backend to repopulate the form
+        const submittedConditions = {{ submitted_conditions | tojson | safe }};
+
+        function createConditionElement(type, condition = {}, index) {
+            const container = document.getElementById(`${type}-conditions-container`);
+
+            // Add logical operator (AND/OR) row if this is not the first condition
+            if (container.children.length > 0) {
+                const operatorRow = document.createElement('div');
+                operatorRow.className = 'logical-operator-row';
+                operatorRow.innerHTML = `
+                    <select name="${type}_logical_${index-1}">
+                        <option value="AND" ${condition.logical === 'AND' ? 'selected' : ''}>AND</option>
+                        <option value="OR" ${condition.logical === 'OR' ? 'selected' : ''}>OR</option>
+                    </select>
+                `;
+                container.appendChild(operatorRow);
+            }
+
+            const row = document.createElement('div');
+            row.className = 'condition-row';
+
+            // Note: The `value` attributes are set dynamically below
+            row.innerHTML = `
+                <select name="${type}_field1_${index}">
+                    <option value="open">Open</option> <option value="high">High</option>
+                    <option value="low">Low</option> <option value="close">Close</option>
+                </select>
+                <span>of T</span>
+                <input type="number" name="${type}_day1_${index}" placeholder="e.g., -1, 0, 1" value="${condition.day1 || 0}" style="width: 100px;">
+                <select name="${type}_operator_${index}">
+                    <option value=">">&gt;</option> <option value="<">&lt;</option>
+                    <option value="=">=</option>
+                </select>
+                <select name="${type}_field2_${index}">
+                    <option value="open">Open</option> <option value="high">High</option>
+                    <option value="low">Low</option> <option value="close">Close</option>
+                </select>
+                <span>of T</span>
+                <input type="number" name="${type}_day2_${index}" placeholder="e.g., -1, 0, 1" value="${condition.day2 || 0}" style="width: 100px;">
+                <button type="button" class="remove-btn">Remove</button>
+            `;
+
+            // Set selected values for dropdowns from submitted data
+            if (condition.field1) row.querySelector(`select[name="${type}_field1_${index}"]`).value = condition.field1;
+            if (condition.operator) row.querySelector(`select[name="${type}_operator_${index}"]`).value = condition.operator;
+            if (condition.field2) row.querySelector(`select[name="${type}_field2_${index}"]`).value = condition.field2;
+
+            container.appendChild(row);
+        }
 
         function addCondition(type) {
             const container = document.getElementById(`${type}-conditions-container`);
-            const template = document.getElementById('condition-row-template');
-            const clone = template.content.cloneNode(true);
-            const row = clone.querySelector('.condition-row');
-
-            const counter = type === 'trigger' ? triggerCounter++ : successCounter++;
-
-            // Populate day dropdowns based on type
-            const day1Select = row.querySelector('select[name="day1"]');
-            const day2Select = row.querySelector('select[name="day2"]');
-
-            if (type === 'trigger') {
-                day1Select.innerHTML = '<option value="T">Current Day (T)</option><option value="T-1">Previous Day (T-1)</option>';
-                day2Select.innerHTML = '<option value="T">Current Day (T)</option><option value="T-1">Previous Day (T-1)</option>';
-            } else { // success
-                day1Select.innerHTML = '<option value="T+1">Day T+1</option><option value="T+2">Day T+2</option>';
-                day2Select.innerHTML = '<option value="T+1">Day T+1</option><option value="T+2">Day T+2</option>';
-            }
-
-            // Uniquely name the fields for the backend
-            row.querySelector('select[name="field1"]').name = `${type}_field1_${counter}`;
-            row.querySelector('select[name="day1"]').name = `${type}_day1_${counter}`;
-            row.querySelector('select[name="operator"]').name = `${type}_operator_${counter}`;
-            row.querySelector('select[name="field2"]').name = `${type}_field2_${counter}`;
-            row.querySelector('select[name="day2"]').name = `${type}_day2_${counter}`;
-
-            container.appendChild(clone);
+            const index = container.querySelectorAll('.condition-row').length;
+            createConditionElement(type, {}, index);
         }
 
+        // Event delegation for remove buttons
+        document.addEventListener('click', function(e) {
+            if (e.target && e.target.classList.contains('remove-btn')) {
+                const row = e.target.closest('.condition-row');
+                const container = row.parentElement;
+                const operatorRow = row.previousElementSibling;
+
+                if (operatorRow && operatorRow.classList.contains('logical-operator-row')) {
+                    operatorRow.remove(); // Remove the AND/OR dropdown before this row
+                } else {
+                    // If this was the first row, remove the AND/OR after it (if it exists)
+                    const nextOperator = row.nextElementSibling;
+                    if (nextOperator && nextOperator.classList.contains('logical-operator-row')) {
+                        nextOperator.remove();
+                    }
+                }
+                row.remove();
+            }
+        });
+
         document.addEventListener('DOMContentLoaded', function() {
-            // Add one default rule to each section on page load
-            addCondition('trigger');
-            addCondition('success');
+            // Repopulate form from submitted data or create default rows
+            if (submittedConditions && submittedConditions.trigger.length > 0) {
+                submittedConditions.trigger.forEach((c, i) => createConditionElement('trigger', c, i));
+            } else {
+                addCondition('trigger');
+            }
+
+            if (submittedConditions && submittedConditions.success.length > 0) {
+                submittedConditions.success.forEach((c, i) => createConditionElement('success', c, i));
+            } else {
+                addCondition('success');
+            }
 
             // Set default dates if not already set
             if (!document.getElementById('to_date').value) {
-                const today = new Date();
-                document.getElementById('to_date').value = today.toISOString().split('T')[0];
+                document.getElementById('to_date').valueAsDate = new Date();
             }
             if (!document.getElementById('from_date').value) {
                 const lastMonth = new Date();
                 lastMonth.setMonth(lastMonth.getMonth() - 1);
-                document.getElementById('from_date').value = lastMonth.toISOString().split('T')[0];
+                document.getElementById('from_date').valueAsDate = lastMonth;
             }
         });
 
