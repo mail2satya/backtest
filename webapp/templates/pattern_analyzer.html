@@ -32,13 +32,6 @@
                 <input type="date" id="to_date" name="to_date" value="{{ to_date or '' }}" required>
             </div>
             <div class="form-group">
-                <label for="scan_type">Pattern to Analyze</label>
-                <select id="scan_type" name="scan_type">
-                    <option value="bullish" {% if scan_type == 'bullish' %}selected{% endif %}>Bullish Trigger</option>
-                    <option value="bearish" {% if scan_type == 'bearish' %}selected{% endif %}>Bearish Trigger</option>
-                </select>
-            </div>
-            <div class="form-group">
                 <label for="stock_symbol">Stock Symbol (Optional)</label>
                 <input type="text" id="stock_symbol" name="stock_symbol" value="{{ stock_symbol or '' }}" placeholder="e.g., INFY.NS">
             </div>
@@ -59,13 +52,33 @@
             <h2>Analysis Results</h2>
             <p>
                 Between <strong>{{ from_date }}</strong> and <strong>{{ to_date }}</strong>
-                for <strong>{{ stock_symbol or 'all stocks' }}</strong>:
+                for <strong>{{ stock_symbol or 'all stocks' }}</strong>.
             </p>
-            <ul>
-                <li>The '<strong>{{ scan_type }}</strong>' trigger pattern occurred <strong>{{ result.total_triggers }}</strong> times.</li>
-                <li>It was followed by two consecutive successful days <strong>{{ result.successful_outcomes }}</strong> times.</li>
-            </ul>
-            <h3>Success Rate: <strong>{{ "%.2f"|format(result.success_rate) }}%</strong></h3>
+            <hr>
+
+            <h4>Bullish Pattern Analysis</h4>
+            {% if result.bullish.total_triggers > 0 %}
+                <ul>
+                    <li>The <strong>Bullish Trigger</strong> occurred <strong>{{ result.bullish.total_triggers }}</strong> times.</li>
+                    <li>It was followed by two consecutive green days <strong>{{ result.bullish.successful_outcomes }}</strong> times.</li>
+                </ul>
+                <h3>Success Rate: <strong>{{ "%.2f"|format(result.bullish.success_rate) }}%</strong></h3>
+            {% else %}
+                <p>No bullish trigger patterns were found in this period.</p>
+            {% endif %}
+
+            <hr>
+
+            <h4>Bearish Pattern Analysis</h4>
+            {% if result.bearish.total_triggers > 0 %}
+                <ul>
+                    <li>The <strong>Bearish Trigger</strong> occurred <strong>{{ result.bearish.total_triggers }}</strong> times.</li>
+                    <li>It was followed by two consecutive red days <strong>{{ result.bearish.successful_outcomes }}</strong> times.</li>
+                </ul>
+                <h3>Success Rate: <strong>{{ "%.2f"|format(result.bearish.success_rate) }}%</strong></h3>
+            {% else %}
+                <p>No bearish trigger patterns were found in this period.</p>
+            {% endif %}
         </div>
     {% endif %}
 

@@ -555,94 +555,98 @@ def pattern_analyzer():
     if request.method == 'POST':
         from_date = request.form.get('from_date')
         to_date = request.form.get('to_date')
-        scan_type = request.form.get('scan_type', 'bullish')
         stock_symbol = request.form.get('stock_symbol', None)
 
         if not from_date or not to_date:
             return render_template('pattern_analyzer.html', error="Please select both a start and end date.")
 
-        result = calculate_pattern_success_rate(from_date, to_date, scan_type, stock_symbol)
+        result = calculate_pattern_success_rate(from_date, to_date, stock_symbol)
 
         return render_template('pattern_analyzer.html', result=result, from_date=from_date,
-                             to_date=to_date, scan_type=scan_type, stock_symbol=stock_symbol)
+                             to_date=to_date, stock_symbol=stock_symbol)
 
     return render_template('pattern_analyzer.html', result=None)
 
-def calculate_pattern_success_rate(from_date, to_date, scan_type, stock_symbol=None):
+def calculate_pattern_success_rate(from_date, to_date, stock_symbol=None):
     """
-    Analyzes the success rate of a given trigger pattern over a date range.
+    Analyzes the success rate of both bullish and bearish trigger patterns over a date range.
     A 'success' is defined as two consecutive days following the trigger
     that match the pattern's desired outcome (green candles for bullish, red for bearish).
     """
     conn = get_db_connection()
     cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
 
-    # Define the trigger condition
-    if scan_type == 'bullish':
-        trigger_condition = "d.open > d.prev_close AND d.close > d.prev_close"
-        outcome_condition = "(d.next_day1_close > d.next_day1_open AND d.next_day2_close > d.next_day2_open)"
-    elif scan_type == 'bearish':
-        trigger_condition = "d.open < d.prev_close AND d.close < d.prev_close"
-        outcome_condition = "(d.next_day1_close < d.next_day1_open AND d.next_day2_close < d.next_day2_open)"
-    else:
-        return {"total_triggers": 0, "successful_outcomes": 0, "success_rate": 0}
-
     # Optional stock symbol filter
     symbol_filter = ""
     params = [from_date, to_date]
     if stock_symbol and stock_symbol.strip():
-        symbol_filter = "AND d.symbol = %s"
+        symbol_filter = "AND symbol = %s"
         params.append(stock_symbol.upper().strip())
 
     query = f"""
     WITH daily_data AS (
-        -- Calculate previous day's close and lead open/close for the next 2 days
+        -- Get previous day's close and next two days' open/close
         SELECT
-            symbol,
-            date,
-            open,
-            close,
+            symbol, date, open, close,
             LAG(close, 1) OVER (PARTITION BY symbol ORDER BY date) AS prev_close,
             LEAD(open, 1) OVER (PARTITION BY symbol ORDER BY date) AS next_day1_open,
             LEAD(close, 1) OVER (PARTITION BY symbol ORDER BY date) AS next_day1_close,
             LEAD(open, 2) OVER (PARTITION BY symbol ORDER BY date) AS next_day2_open,
             LEAD(close, 2) OVER (PARTITION BY symbol ORDER BY date) AS next_day2_close
         FROM raw_data
+        WHERE date >= %s::date - interval '3 day' AND date <= %s::date + interval '3 day'
+        {symbol_filter}
     ),
-    triggered_days AS (
-        -- Identify all days that meet the trigger condition
+    analyzed_triggers AS (
+        -- Identify triggers and their outcomes
         SELECT
-            symbol,
-            date,
-            {outcome_condition} AS is_successful
-        FROM daily_data d
-        WHERE d.date BETWEEN %s AND %s
-          AND d.prev_close IS NOT NULL
-          AND d.next_day1_open IS NOT NULL AND d.next_day1_close IS NOT NULL
-          AND d.next_day2_open IS NOT NULL AND d.next_day2_close IS NOT NULL
-          AND {trigger_condition}
-          {symbol_filter}
+            (open > prev_close AND close > prev_close) AS is_bullish_trigger,
+            (open < prev_close AND close < prev_close) AS is_bearish_trigger,
+            (next_day1_close > next_day1_open AND next_day2_close > next_day2_open) AS is_bullish_success,
+            (next_day1_close < next_day1_open AND next_day2_close < next_day2_open) AS is_bearish_success
+        FROM daily_data
+        WHERE date BETWEEN %s AND %s
+          AND prev_close IS NOT NULL
+          AND next_day1_open IS NOT NULL AND next_day1_close IS NOT NULL
+          AND next_day2_open IS NOT NULL AND next_day2_close IS NOT NULL
     )
-    -- Count total triggers and successful outcomes
+    -- Aggregate the results
     SELECT
-        COUNT(*) AS total_triggers,
-        SUM(CASE WHEN is_successful THEN 1 ELSE 0 END) AS successful_outcomes
-    FROM triggered_days;
+        SUM(CASE WHEN is_bullish_trigger THEN 1 ELSE 0 END) AS total_bullish_triggers,
+        SUM(CASE WHEN is_bullish_trigger AND is_bullish_success THEN 1 ELSE 0 END) AS successful_bullish_outcomes,
+        SUM(CASE WHEN is_bearish_trigger THEN 1 ELSE 0 END) AS total_bearish_triggers,
+        SUM(CASE WHEN is_bearish_trigger AND is_bearish_success THEN 1 ELSE 0 END) AS successful_bearish_outcomes
+    FROM analyzed_triggers;
     """
 
-    cursor.execute(query, tuple(params))
+    # The date range for the main query needs to be passed twice
+    final_params = params + [from_date, to_date]
+    cursor.execute(query, tuple(final_params))
     result = cursor.fetchone()
     cursor.close()
     conn.close()
 
-    total_triggers = result['total_triggers'] if result and result['total_triggers'] is not None else 0
-    successful_outcomes = result['successful_outcomes'] if result and result['successful_outcomes'] is not None else 0
-    success_rate = (successful_outcomes / total_triggers * 100) if total_triggers > 0 else 0
+    # Process bullish results
+    bullish_triggers = result['total_bullish_triggers'] if result and result['total_bullish_triggers'] is not None else 0
+    bullish_successes = result['successful_bullish_outcomes'] if result and result['successful_bullish_outcomes'] is not None else 0
+    bullish_rate = (bullish_successes / bullish_triggers * 100) if bullish_triggers > 0 else 0
+
+    # Process bearish results
+    bearish_triggers = result['total_bearish_triggers'] if result and result['total_bearish_triggers'] is not None else 0
+    bearish_successes = result['successful_bearish_outcomes'] if result and result['successful_bearish_outcomes'] is not None else 0
+    bearish_rate = (bearish_successes / bearish_triggers * 100) if bearish_triggers > 0 else 0
 
     return {
-        "total_triggers": total_triggers,
-        "successful_outcomes": successful_outcomes,
-        "success_rate": success_rate
+        "bullish": {
+            "total_triggers": bullish_triggers,
+            "successful_outcomes": bullish_successes,
+            "success_rate": bullish_rate
+        },
+        "bearish": {
+            "total_triggers": bearish_triggers,
+            "successful_outcomes": bearish_successes,
+            "success_rate": bearish_rate
+        }
     }
 
 if __name__ == '__main__':
