@@ -1,16 +1,24 @@
 {% extends "base.html" %}
 
-{% block title %}Pattern Success Rate Analyzer{% endblock %}
+{% block title %}Custom Pattern Analyzer{% endblock %}
 
 {% block head %}
     <style>
         .form-container { background-color: #f9f9f9; padding: 20px; border-radius: 8px; margin-bottom: 20px; }
-        .form-container form { display: flex; flex-wrap: wrap; gap: 20px; align-items: flex-end; }
-        .form-container .form-group { display: flex; flex-direction: column; }
+        .form-group { display: flex; flex-direction: column; margin-bottom: 15px; }
         .form-container label { margin-bottom: 5px; font-weight: bold; }
-        .form-container input, .form-container select { padding: 8px; border: 1px solid #ccc; border-radius: 4px; }
-        .form-container button { padding: 10px 20px; border: none; background-color: #007bff; color: white; border-radius: 5px; cursor: pointer; }
-        .form-container button:hover { background-color: #0056b3; }
+        .form-container input { padding: 8px; border: 1px solid #ccc; border-radius: 4px; }
+
+        .rule-builder-section { border: 1px solid #ddd; padding: 15px; border-radius: 5px; margin-top: 20px; }
+        .rule-builder-section h3 { margin-top: 0; }
+        .condition-row { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+        .condition-row select { padding: 8px; border: 1px solid #ccc; border-radius: 4px; }
+        .remove-btn { padding: 5px 10px; background-color: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer; }
+        .add-btn { padding: 8px 12px; background-color: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; margin-top: 10px; }
+
+        #analyzer-form button[type="submit"] { padding: 10px 20px; border: none; background-color: #007bff; color: white; border-radius: 5px; cursor: pointer; margin-top: 20px; }
+        #analyzer-form button[type="submit"]:hover { background-color: #0056b3; }
+
         .results-container { margin-top: 20px; padding: 20px; background-color: #e9ecef; border-radius: 8px; }
         .loader { text-align: center; font-size: 18px; display: none; }
         .error { color: red; text-align: center; }
@@ -18,30 +26,49 @@
 {% endblock %}
 
 {% block content %}
-    <h1>Pattern Success Rate Analyzer</h1>
-    <p>This tool backtests a trigger pattern over a selected date range to see how often it's followed by two consecutive days of the desired outcome (e.g., two green candles after a bullish trigger).</p>
+    <h1>Custom Pattern Analyzer</h1>
+    <p>Build your own custom trigger and success patterns to backtest their success rate over a selected date range.</p>
 
     <div class="form-container">
         <form id="analyzer-form" method="POST">
-            <div class="form-group">
-                <label for="from_date">From Date</label>
-                <input type="date" id="from_date" name="from_date" value="{{ from_date or '' }}" required>
+            <div style="display: flex; gap: 20px;">
+                <div class="form-group">
+                    <label for="from_date">From Date</label>
+                    <input type="date" id="from_date" name="from_date" value="{{ from_date or '' }}" required>
+                </div>
+                <div class="form-group">
+                    <label for="to_date">To Date</label>
+                    <input type="date" id="to_date" name="to_date" value="{{ to_date or '' }}" required>
+                </div>
+                <div class="form-group">
+                    <label for="stock_symbol">Stock Symbol (Optional)</label>
+                    <input type="text" id="stock_symbol" name="stock_symbol" value="{{ stock_symbol or '' }}" placeholder="e.g., INFY.NS">
+                </div>
             </div>
-            <div class="form-group">
-                <label for="to_date">To Date</label>
-                <input type="date" id="to_date" name="to_date" value="{{ to_date or '' }}" required>
+
+            <!-- Trigger Conditions Builder -->
+            <div class="rule-builder-section">
+                <h3>Trigger Conditions (Day T)</h3>
+                <div id="trigger-conditions-container">
+                    <!-- JS will populate this -->
+                </div>
+                <button type="button" class="add-btn" onclick="addCondition('trigger')">Add Trigger Condition</button>
             </div>
-            <div class="form-group">
-                <label for="stock_symbol">Stock Symbol (Optional)</label>
-                <input type="text" id="stock_symbol" name="stock_symbol" value="{{ stock_symbol or '' }}" placeholder="e.g., INFY.NS">
+
+            <!-- Success Conditions Builder -->
+            <div class="rule-builder-section">
+                <h3>Success Conditions</h3>
+                <div id="success-conditions-container">
+                    <!-- JS will populate this -->
+                </div>
+                <button type="button" class="add-btn" onclick="addCondition('success')">Add Success Condition</button>
             </div>
-            <button type="submit">Analyze</button>
+
+            <button type="submit">Analyze Pattern</button>
         </form>
     </div>
 
-    <div id="loader" class="loader">
-        <p>Analyzing pattern success rate... This might take a moment, especially for long date ranges.</p>
-    </div>
+    <div id="loader" class="loader"><p>Analyzing pattern...</p></div>
 
     {% if error %}
         <p class="error">{{ error }}</p>
@@ -50,52 +77,97 @@
     {% if result is not none %}
         <div class="results-container">
             <h2>Analysis Results</h2>
-            <p>
+             <p>
                 Between <strong>{{ from_date }}</strong> and <strong>{{ to_date }}</strong>
-                for <strong>{{ stock_symbol or 'all stocks' }}</strong>.
+                for <strong>{{ stock_symbol or 'all stocks' }}</strong>:
             </p>
-            <hr>
-
-            <h4>Bullish Pattern Analysis</h4>
-            {% if result.bullish.total_triggers > 0 %}
-                <ul>
-                    <li>The <strong>Bullish Trigger</strong> occurred <strong>{{ result.bullish.total_triggers }}</strong> times.</li>
-                    <li>It was followed by two consecutive green days <strong>{{ result.bullish.successful_outcomes }}</strong> times.</li>
-                </ul>
-                <h3>Success Rate: <strong>{{ "%.2f"|format(result.bullish.success_rate) }}%</strong></h3>
-            {% else %}
-                <p>No bullish trigger patterns were found in this period.</p>
-            {% endif %}
-
-            <hr>
-
-            <h4>Bearish Pattern Analysis</h4>
-            {% if result.bearish.total_triggers > 0 %}
-                <ul>
-                    <li>The <strong>Bearish Trigger</strong> occurred <strong>{{ result.bearish.total_triggers }}</strong> times.</li>
-                    <li>It was followed by two consecutive red days <strong>{{ result.bearish.successful_outcomes }}</strong> times.</li>
-                </ul>
-                <h3>Success Rate: <strong>{{ "%.2f"|format(result.bearish.success_rate) }}%</strong></h3>
-            {% else %}
-                <p>No bearish trigger patterns were found in this period.</p>
-            {% endif %}
+            <ul>
+                <li>The custom trigger pattern occurred <strong>{{ result.total_triggers }}</strong> times.</li>
+                <li>The success conditions were met <strong>{{ result.successful_outcomes }}</strong> times.</li>
+            </ul>
+            <h3>Success Rate: <strong>{{ "%.2f"|format(result.success_rate) }}%</strong></h3>
         </div>
     {% endif %}
 
+    <!-- Template for a single condition row -->
+    <template id="condition-row-template">
+        <div class="condition-row">
+            <select name="field1">
+                <option value="open">Open</option>
+                <option value="high">High</option>
+                <option value="low">Low</option>
+                <option value="close">Close</option>
+            </select>
+            <select name="day1"></select>
+            <select name="operator">
+                <option value=">">&gt;</option>
+                <option value="<">&lt;</option>
+                <option value="=">=</option>
+            </select>
+            <select name="field2">
+                <option value="open">Open</option>
+                <option value="high">High</option>
+                <option value="low">Low</option>
+                <option value="close">Close</option>
+            </select>
+            <select name="day2"></select>
+            <button type="button" class="remove-btn" onclick="this.parentElement.remove()">Remove</button>
+        </div>
+    </template>
+
     <script>
+        let triggerCounter = 0;
+        let successCounter = 0;
+
+        function addCondition(type) {
+            const container = document.getElementById(`${type}-conditions-container`);
+            const template = document.getElementById('condition-row-template');
+            const clone = template.content.cloneNode(true);
+            const row = clone.querySelector('.condition-row');
+
+            const counter = type === 'trigger' ? triggerCounter++ : successCounter++;
+
+            // Populate day dropdowns based on type
+            const day1Select = row.querySelector('select[name="day1"]');
+            const day2Select = row.querySelector('select[name="day2"]');
+
+            if (type === 'trigger') {
+                day1Select.innerHTML = '<option value="T">Current Day (T)</option><option value="T-1">Previous Day (T-1)</option>';
+                day2Select.innerHTML = '<option value="T">Current Day (T)</option><option value="T-1">Previous Day (T-1)</option>';
+            } else { // success
+                day1Select.innerHTML = '<option value="T+1">Day T+1</option><option value="T+2">Day T+2</option>';
+                day2Select.innerHTML = '<option value="T+1">Day T+1</option><option value="T+2">Day T+2</option>';
+            }
+
+            // Uniquely name the fields for the backend
+            row.querySelector('select[name="field1"]').name = `${type}_field1_${counter}`;
+            row.querySelector('select[name="day1"]').name = `${type}_day1_${counter}`;
+            row.querySelector('select[name="operator"]').name = `${type}_operator_${counter}`;
+            row.querySelector('select[name="field2"]').name = `${type}_field2_${counter}`;
+            row.querySelector('select[name="day2"]').name = `${type}_day2_${counter}`;
+
+            container.appendChild(clone);
+        }
+
+        document.addEventListener('DOMContentLoaded', function() {
+            // Add one default rule to each section on page load
+            addCondition('trigger');
+            addCondition('success');
+
+            // Set default dates if not already set
+            if (!document.getElementById('to_date').value) {
+                const today = new Date();
+                document.getElementById('to_date').value = today.toISOString().split('T')[0];
+            }
+            if (!document.getElementById('from_date').value) {
+                const lastMonth = new Date();
+                lastMonth.setMonth(lastMonth.getMonth() - 1);
+                document.getElementById('from_date').value = lastMonth.toISOString().split('T')[0];
+            }
+        });
+
         document.getElementById('analyzer-form').addEventListener('submit', function() {
             document.getElementById('loader').style.display = 'block';
         });
-
-        // Set default dates if not already set
-        if (!document.getElementById('to_date').value) {
-            const today = new Date();
-            document.getElementById('to_date').value = today.toISOString().split('T')[0];
-        }
-        if (!document.getElementById('from_date').value) {
-            const lastMonth = new Date();
-            lastMonth.setMonth(lastMonth.getMonth() - 1);
-            document.getElementById('from_date').value = lastMonth.toISOString().split('T')[0];
-        }
     </script>
 {% endblock %}

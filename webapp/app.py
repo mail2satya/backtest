@@ -549,6 +549,33 @@ def calculate_movement_performance(trigger_date, scan_type, days_to_track, min_p
 
     return list(results.values())
 
+def _parse_dynamic_conditions(form):
+    """Helper to parse the dynamic rule conditions from the form."""
+    conditions = {'trigger': [], 'success': []}
+
+    # Loop through form items to find our dynamically named fields
+    for key, value in form.items():
+        if key.startswith('trigger_field1_'):
+            idx = key.split('_')[-1]
+            condition_type = 'trigger'
+        elif key.startswith('success_field1_'):
+            idx = key.split('_')[-1]
+            condition_type = 'success'
+        else:
+            continue
+
+        # Reconstruct the condition from its parts
+        condition = {
+            'field1': form.get(f'{condition_type}_field1_{idx}'),
+            'day1': form.get(f'{condition_type}_day1_{idx}'),
+            'operator': form.get(f'{condition_type}_operator_{idx}'),
+            'field2': form.get(f'{condition_type}_field2_{idx}'),
+            'day2': form.get(f'{condition_type}_day2_{idx}'),
+        }
+        conditions[condition_type].append(condition)
+
+    return conditions
+
 @app.route('/pattern_analyzer', methods=['GET', 'POST'])
 @login_required
 def pattern_analyzer():
@@ -560,18 +587,53 @@ def pattern_analyzer():
         if not from_date or not to_date:
             return render_template('pattern_analyzer.html', error="Please select both a start and end date.")
 
-        result = calculate_pattern_success_rate(from_date, to_date, stock_symbol)
+        # Parse the dynamic conditions from the form
+        conditions = _parse_dynamic_conditions(request.form)
+
+        # Check if at least one trigger and one success condition are provided
+        if not conditions['trigger'] or not conditions['success']:
+            return render_template('pattern_analyzer.html', error="Please define at least one trigger and one success condition.")
+
+        # Pass the parsed conditions to the calculation function
+        result = calculate_pattern_success_rate(from_date, to_date, stock_symbol, conditions)
 
         return render_template('pattern_analyzer.html', result=result, from_date=from_date,
                              to_date=to_date, stock_symbol=stock_symbol)
 
     return render_template('pattern_analyzer.html', result=None)
 
-def calculate_pattern_success_rate(from_date, to_date, stock_symbol=None):
+def _translate_condition_to_sql(condition):
+    """Translates a single condition object into a safe SQL string."""
+    # Whitelist of allowed fields and operators
+    allowed_fields = ['open', 'high', 'low', 'close']
+    allowed_operators = ['>', '<', '=']
+
+    # Map form 'day' values to SQL column aliases
+    day_map = {
+        'T-1': 'prev_day',
+        'T': 'current_day',
+        'T+1': 'next_day1',
+        'T+2': 'next_day2'
+    }
+
+    field1 = condition['field1']
+    day1 = condition['day1']
+    op = condition['operator']
+    field2 = condition['field2']
+    day2 = condition['day2']
+
+    # Validate all parts of the condition
+    if field1 not in allowed_fields or field2 not in allowed_fields or \
+       op not in allowed_operators or day1 not in day_map or day2 not in day_map:
+        raise ValueError("Invalid condition provided.")
+
+    # Construct the SQL snippet
+    # e.g., "current_day_close > prev_day_high"
+    return f"{day_map[day1]}_{field1} {op} {day_map[day2]}_{field2}"
+
+def calculate_pattern_success_rate(from_date, to_date, stock_symbol, conditions):
     """
-    Analyzes the success rate of both bullish and bearish trigger patterns over a date range.
-    A 'success' is defined as two consecutive days following the trigger
-    that match the pattern's desired outcome (green candles for bullish, red for bearish).
+    Analyzes the success rate of a dynamically defined pattern over a date range.
     """
     conn = get_db_connection()
     cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
@@ -583,70 +645,60 @@ def calculate_pattern_success_rate(from_date, to_date, stock_symbol=None):
         symbol_filter = "AND symbol = %s"
         params.append(stock_symbol.upper().strip())
 
+    try:
+        trigger_sql = " AND ".join([_translate_condition_to_sql(c) for c in conditions['trigger']])
+        success_sql = " AND ".join([_translate_condition_to_sql(c) for c in conditions['success']])
+    except ValueError as e:
+        # Handle cases with invalid/malicious form data
+        return {"error": str(e)}
+
     query = f"""
     WITH daily_data AS (
-        -- Get previous day's close and next two days' open/close
+        -- Use LAG and LEAD to get access to T-1, T+1, and T+2 data on a single row
         SELECT
-            symbol, date, open, close,
-            LAG(close, 1) OVER (PARTITION BY symbol ORDER BY date) AS prev_close,
-            LEAD(open, 1) OVER (PARTITION BY symbol ORDER BY date) AS next_day1_open,
-            LEAD(close, 1) OVER (PARTITION BY symbol ORDER BY date) AS next_day1_close,
-            LEAD(open, 2) OVER (PARTITION BY symbol ORDER BY date) AS next_day2_open,
-            LEAD(close, 2) OVER (PARTITION BY symbol ORDER BY date) AS next_day2_close
+            date, symbol, open, high, low, close,
+            LAG(open, 1) OVER w AS prev_open, LAG(high, 1) OVER w AS prev_high,
+            LAG(low, 1) OVER w AS prev_low, LAG(close, 1) OVER w AS prev_close,
+            LEAD(open, 1) OVER w AS next1_open, LEAD(high, 1) OVER w AS next1_high,
+            LEAD(low, 1) OVER w AS next1_low, LEAD(close, 1) OVER w AS next1_close,
+            LEAD(open, 2) OVER w AS next2_open, LEAD(high, 2) OVER w AS next2_high,
+            LEAD(low, 2) OVER w AS next2_low, LEAD(close, 2) OVER w AS next2_close
         FROM raw_data
-        WHERE date >= %s::date - interval '3 day' AND date <= %s::date + interval '3 day'
-        {symbol_filter}
+        WINDOW w AS (PARTITION BY symbol ORDER BY date)
     ),
-    analyzed_triggers AS (
-        -- Identify triggers and their outcomes
+    aliased_data AS (
+        -- Flatten the structure to provide simple column names for dynamic SQL
         SELECT
-            (open > prev_close AND close > prev_close) AS is_bullish_trigger,
-            (open < prev_close AND close < prev_close) AS is_bearish_trigger,
-            (next_day1_close > next_day1_open AND next_day2_close > next_day2_open) AS is_bullish_success,
-            (next_day1_close < next_day1_open AND next_day2_close < next_day2_open) AS is_bearish_success
+            date,
+            open AS current_day_open, high AS current_day_high, low AS current_day_low, close AS current_day_close,
+            prev_open AS prev_day_open, prev_high AS prev_day_high, prev_low AS prev_day_low, prev_close AS prev_day_close,
+            next1_open AS next_day1_open, next1_high AS next_day1_high, next1_low AS next_day1_low, next1_close AS next_day1_close,
+            next2_open AS next_day2_open, next2_high AS next_day2_high, next2_low AS next_day2_low, next2_close AS next_day2_close
         FROM daily_data
         WHERE date BETWEEN %s AND %s
-          AND prev_close IS NOT NULL
-          AND next_day1_open IS NOT NULL AND next_day1_close IS NOT NULL
-          AND next_day2_open IS NOT NULL AND next_day2_close IS NOT NULL
+        {symbol_filter}
     )
-    -- Aggregate the results
+    -- Identify triggers and count successes
     SELECT
-        SUM(CASE WHEN is_bullish_trigger THEN 1 ELSE 0 END) AS total_bullish_triggers,
-        SUM(CASE WHEN is_bullish_trigger AND is_bullish_success THEN 1 ELSE 0 END) AS successful_bullish_outcomes,
-        SUM(CASE WHEN is_bearish_trigger THEN 1 ELSE 0 END) AS total_bearish_triggers,
-        SUM(CASE WHEN is_bearish_trigger AND is_bearish_success THEN 1 ELSE 0 END) AS successful_bearish_outcomes
-    FROM analyzed_triggers;
+        COUNT(*) AS total_triggers,
+        SUM(CASE WHEN {success_sql} THEN 1 ELSE 0 END) AS successful_outcomes
+    FROM aliased_data
+    WHERE {trigger_sql};
     """
 
-    # The date range for the main query needs to be passed twice
-    final_params = params + [from_date, to_date]
-    cursor.execute(query, tuple(final_params))
+    cursor.execute(query, tuple(params))
     result = cursor.fetchone()
     cursor.close()
     conn.close()
 
-    # Process bullish results
-    bullish_triggers = result['total_bullish_triggers'] if result and result['total_bullish_triggers'] is not None else 0
-    bullish_successes = result['successful_bullish_outcomes'] if result and result['successful_bullish_outcomes'] is not None else 0
-    bullish_rate = (bullish_successes / bullish_triggers * 100) if bullish_triggers > 0 else 0
-
-    # Process bearish results
-    bearish_triggers = result['total_bearish_triggers'] if result and result['total_bearish_triggers'] is not None else 0
-    bearish_successes = result['successful_bearish_outcomes'] if result and result['successful_bearish_outcomes'] is not None else 0
-    bearish_rate = (bearish_successes / bearish_triggers * 100) if bearish_triggers > 0 else 0
+    total_triggers = result['total_triggers'] if result and result['total_triggers'] is not None else 0
+    successful_outcomes = result['successful_outcomes'] if result and result['successful_outcomes'] is not None else 0
+    success_rate = (successful_outcomes / total_triggers * 100) if total_triggers > 0 else 0
 
     return {
-        "bullish": {
-            "total_triggers": bullish_triggers,
-            "successful_outcomes": bullish_successes,
-            "success_rate": bullish_rate
-        },
-        "bearish": {
-            "total_triggers": bearish_triggers,
-            "successful_outcomes": bearish_successes,
-            "success_rate": bearish_rate
-        }
+        "total_triggers": total_triggers,
+        "successful_outcomes": successful_outcomes,
+        "success_rate": success_rate
     }
 
 if __name__ == '__main__':
