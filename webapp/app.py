@@ -550,12 +550,9 @@ def calculate_movement_performance(trigger_date, scan_type, days_to_track, min_p
     return list(results.values())
 
 def _parse_dynamic_conditions(form):
-    """Helper to parse the dynamic rule conditions and logical operators from the form."""
-    conditions = {'trigger': [], 'success': []}
-
-    # Use a simple counter for each type to reconstruct the order
+    """Helper to parse the dynamic trigger conditions and logical operators from the form."""
+    conditions = {'trigger': []}
     trigger_indices = sorted([int(k.split('_')[-1]) for k in form if k.startswith('trigger_field1_')])
-    success_indices = sorted([int(k.split('_')[-1]) for k in form if k.startswith('success_field1_')])
 
     for idx in trigger_indices:
         conditions['trigger'].append({
@@ -564,44 +561,35 @@ def _parse_dynamic_conditions(form):
             'operator': form.get(f'trigger_operator_{idx}'),
             'field2': form.get(f'trigger_field2_{idx}'),
             'day2': form.get(f'trigger_day2_{idx}'),
-            'logical': form.get(f'trigger_logical_{idx-1}', 'AND') # Logical operator from the previous row
+            'logical': form.get(f'trigger_logical_{idx-1}', 'AND')
         })
-
-    for idx in success_indices:
-        conditions['success'].append({
-            'field1': form.get(f'success_field1_{idx}'),
-            'day1': form.get(f'success_day1_{idx}'),
-            'operator': form.get(f'success_operator_{idx}'),
-            'field2': form.get(f'success_field2_{idx}'),
-            'day2': form.get(f'success_day2_{idx}'),
-            'logical': form.get(f'success_logical_{idx-1}', 'AND')
-        })
-
     return conditions
 
 @app.route('/pattern_analyzer', methods=['GET', 'POST'])
 @login_required
 def pattern_analyzer():
-    result = None
+    results = None
     submitted_conditions = None
     from_date = request.form.get('from_date')
     to_date = request.form.get('to_date')
     stock_symbol = request.form.get('stock_symbol', None)
+    days_to_track = int(request.form.get('days_to_track', 5))
 
     if request.method == 'POST':
         if not from_date or not to_date:
             return render_template('pattern_analyzer.html', error="Please select both a start and end date.")
 
-        # Parse and preserve the submitted conditions for repopulating the form
         submitted_conditions = _parse_dynamic_conditions(request.form)
 
-        if not submitted_conditions['trigger'] or not submitted_conditions['success']:
-            return render_template('pattern_analyzer.html', error="Please define at least one trigger and one success condition.", submitted_conditions=submitted_conditions)
+        if not submitted_conditions['trigger']:
+            return render_template('pattern_analyzer.html', error="Please define at least one trigger condition.",
+                                 submitted_conditions=submitted_conditions, days_to_track=days_to_track)
 
-        result = calculate_pattern_success_rate(from_date, to_date, stock_symbol, submitted_conditions)
+        results = analyze_pattern_performance(from_date, to_date, stock_symbol, submitted_conditions['trigger'], days_to_track)
 
-    return render_template('pattern_analyzer.html', result=result, from_date=from_date,
-                         to_date=to_date, stock_symbol=stock_symbol, submitted_conditions=submitted_conditions)
+    return render_template('pattern_analyzer.html', results=results, from_date=from_date,
+                         to_date=to_date, stock_symbol=stock_symbol,
+                         submitted_conditions=submitted_conditions, days_to_track=days_to_track)
 
 def _build_sql_logic(conditions):
     """Translates a list of condition objects into a safe, combined SQL string with AND/OR logic."""
@@ -620,47 +608,48 @@ def _build_sql_logic(conditions):
         if field1 not in allowed_fields or field2 not in allowed_fields or op not in allowed_operators or logical not in ['AND', 'OR']:
             raise ValueError("Invalid condition parameters.")
 
-        # Translate day offset to SQL alias
         alias1 = f"t_{day1}".replace('-', 'minus_')
         alias2 = f"t_{day2}".replace('-', 'minus_')
-
         sql_part = f"{alias1}_{field1} {op} {alias2}_{field2}"
 
-        # Add the logical operator if this is not the first condition
         if i > 0:
             sql_parts.append(logical)
         sql_parts.append(sql_part)
 
-    # Wrap in parentheses for correct logical precedence
     return f"({ ' '.join(sql_parts) })" if sql_parts else "TRUE"
 
-def calculate_pattern_success_rate(from_date, to_date, stock_symbol, conditions):
-    """Analyzes the success rate of a fully dynamic, user-defined pattern."""
+def analyze_pattern_performance(from_date, to_date, stock_symbol, trigger_conditions, days_to_track):
+    """
+    Analyzes the performance of stocks for N days following a user-defined trigger pattern.
+    """
     conn = get_db_connection()
     cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
 
     all_day_offsets = set([0])
-    for group in ['trigger', 'success']:
-        for condition in conditions[group]:
-            all_day_offsets.add(int(condition['day1']))
-            all_day_offsets.add(int(condition['day2']))
+    for condition in trigger_conditions:
+        all_day_offsets.add(int(condition['day1']))
+        all_day_offsets.add(int(condition['day2']))
 
-    # Generate LAG/LEAD expressions for all required day offsets
-    window_expressions = []
+    # Generate LAG/LEAD expressions for trigger condition validation
+    trigger_window_expressions = []
     for offset in all_day_offsets:
         if offset == 0: continue
         func = 'LAG' if offset < 0 else 'LEAD'
         alias_prefix = f"t_{offset}".replace('-', 'minus_')
         for field in ['open', 'high', 'low', 'close']:
-            window_expressions.append(
+            trigger_window_expressions.append(
                 f"{func}({field}, {abs(offset)}) OVER w AS {alias_prefix}_{field}"
             )
 
-    window_sql = ",\n            ".join(window_expressions)
+    # Generate LEAD expressions for performance tracking
+    performance_window_expressions = []
+    for i in range(1, days_to_track + 1):
+        performance_window_expressions.append(
+            f"LEAD(close, {i}) OVER w AS next_close_{i}"
+        )
 
     try:
-        trigger_sql = _build_sql_logic(conditions['trigger'])
-        success_sql = _build_sql_logic(conditions['success'])
+        trigger_sql = _build_sql_logic(trigger_conditions)
     except (ValueError, KeyError) as e:
         return {"error": f"Failed to build SQL logic: {e}"}
 
@@ -671,41 +660,55 @@ def calculate_pattern_success_rate(from_date, to_date, stock_symbol, conditions)
         params.append(stock_symbol.upper().strip())
 
     query = f"""
-    WITH daily_data AS (
+    WITH daily_data_with_windows AS (
         SELECT
-            date, symbol,
+            date, symbol, close,
             open AS t_0_open, high AS t_0_high, low AS t_0_low, close AS t_0_close,
-            {window_sql}
+            {", ".join(trigger_window_expressions)},
+            {", ".join(performance_window_expressions)}
         FROM raw_data
         WINDOW w AS (PARTITION BY symbol ORDER BY date)
+    ),
+    triggered_events AS (
+        SELECT *
+        FROM daily_data_with_windows
+        WHERE date BETWEEN %s AND %s
+          {symbol_filter}
+          AND {trigger_sql}
     )
-    SELECT
-        COUNT(*) AS total_triggers,
-        SUM(CASE WHEN {success_sql} THEN 1 ELSE 0 END) AS successful_outcomes
-    FROM daily_data
-    WHERE date BETWEEN %s AND %s
-      {symbol_filter}
-      AND {trigger_sql};
+    SELECT * FROM triggered_events ORDER BY symbol, date;
     """
 
     try:
         cursor.execute(query, tuple(params))
-        result = cursor.fetchone()
+        all_data = cursor.fetchall()
     except psycopg2.Error as e:
-        return {"error": f"Database query failed: {e}"}
+        print("Database Query Error:", e)
+        return [] # Return empty list on error
     finally:
         cursor.close()
         conn.close()
 
-    total_triggers = result['total_triggers'] if result else 0
-    successful_outcomes = result['successful_outcomes'] if result and result['successful_outcomes'] is not None else 0
-    success_rate = (successful_outcomes / total_triggers * 100) if total_triggers > 0 else 0
+    # Process results into a list of dictionaries for the template
+    results = []
+    for row in all_data:
+        performance_pcts = []
+        trigger_close = float(row['close'])
+        for i in range(1, days_to_track + 1):
+            next_close = row.get(f'next_close_{i}')
+            if next_close is not None and trigger_close > 0:
+                perf = ((float(next_close) / trigger_close) - 1) * 100
+                performance_pcts.append(perf)
+            else:
+                performance_pcts.append(None) # Or 0, or some other indicator for missing data
 
-    return {
-        "total_triggers": total_triggers,
-        "successful_outcomes": successful_outcomes,
-        "success_rate": success_rate
-    }
+        results.append({
+            "symbol": row['symbol'],
+            "trigger_date": row['date'],
+            "performance": performance_pcts
+        })
+
+    return results
 
 if __name__ == '__main__':
     init_db()
