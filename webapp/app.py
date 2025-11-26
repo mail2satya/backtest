@@ -396,20 +396,18 @@ def movement_scanner():
         scan_type = request.form.get('scan_type', 'bullish')
         min_price = float(request.form.get('min_price', 0))
         max_price = float(request.form.get('max_price', 10000))
-        stock_symbol = request.form.get('stock_symbol', None)
 
         if not trigger_date:
             return render_template('movement_scanner.html', error="Please select a trigger date.")
 
-        results = calculate_movement_performance(trigger_date, scan_type, days_to_track, min_price, max_price, stock_symbol)
+        results = calculate_movement_performance(trigger_date, scan_type, days_to_track, min_price, max_price)
 
         return render_template('movement_scanner.html', results=results, trigger_date=trigger_date, 
-                             days_to_track=days_to_track, scan_type=scan_type, min_price=min_price,
-                             max_price=max_price, stock_symbol=stock_symbol)
+                             days_to_track=days_to_track, scan_type=scan_type, min_price=min_price, max_price=max_price)
 
     return render_template('movement_scanner.html')
 
-def calculate_movement_performance(trigger_date, scan_type, days_to_track, min_price=0, max_price=10000, stock_symbol=None):
+def calculate_movement_performance(trigger_date, scan_type, days_to_track, min_price=0, max_price=10000):
     """
     Finds stocks based on trigger pattern (open and close above/below previous day's CLOSE price)
     and tracks their intraday pattern (bullish/bearish) for the next N days.
@@ -419,46 +417,43 @@ def calculate_movement_performance(trigger_date, scan_type, days_to_track, min_p
 
     # Trigger logic based on previous day's CLOSE price
     if scan_type == 'bullish':
-        condition = "AND open > prev_close AND close > prev_close"
+        condition = """
+            AND current.open > previous.close
+            AND current.close > previous.close
+        """
     elif scan_type == 'bearish':
-        condition = "AND open < prev_close AND close < prev_close"
+        condition = """
+            AND current.open < previous.close
+            AND current.close < previous.close
+        """
     else:
         return []
 
-    # Add a filter for the stock symbol if one is provided
-    symbol_filter = ""
-    params = [trigger_date, min_price, max_price]
-    if stock_symbol:
-        symbol_filter = "AND symbol = %s"
-        params.append(stock_symbol.upper())
-
     query = """
-    WITH lagged_data AS (
+    WITH previous_data AS (
         SELECT
-            symbol,
-            date,
-            open,
-            close,
-            high,
-            low,
-            volume,
-            LAG(close, 1) OVER (PARTITION BY symbol ORDER BY date) AS prev_close
+            symbol, date, open as prev_open, close as prev_close
+        FROM raw_data
+    ),
+    current_data AS (
+        SELECT
+            symbol, date, open, close, high, low, volume
         FROM raw_data
     ),
     triggered_stocks AS (
         SELECT
-            symbol,
-            date AS trigger_date,
-            open AS trigger_open,
-            close AS trigger_close,
-            prev_close AS prev_day_close,
-            (close - open) AS trigger_intraday_move
-        FROM lagged_data
-        WHERE date = %s
-          AND open BETWEEN %s AND %s
-          AND prev_close IS NOT NULL
-          {symbol_filter}
-          {condition}
+            current.symbol,
+            current.date AS trigger_date,
+            current.open AS trigger_open,
+            current.close AS trigger_close,
+            previous.prev_close AS prev_day_close,
+            (current.close - current.open) AS trigger_intraday_move
+        FROM current_data current
+        JOIN previous_data previous ON current.symbol = previous.symbol
+            AND current.date = previous.date + INTERVAL '1 day'
+        WHERE current.date = %s
+            AND current.open BETWEEN %s AND %s
+            {condition}
     ),
     performance_days AS (
         SELECT
@@ -497,10 +492,9 @@ def calculate_movement_performance(trigger_date, scan_type, days_to_track, min_p
     FROM performance_days
     WHERE day_num <= %s
     ORDER BY symbol, date;
-    """.format(condition=condition, symbol_filter=symbol_filter)
+    """.format(condition=condition)
 
-    params.append(days_to_track)
-    cursor.execute(query, tuple(params))
+    cursor.execute(query, (trigger_date, min_price, max_price, days_to_track))
     all_data = cursor.fetchall()
     cursor.close()
     conn.close()
@@ -519,196 +513,29 @@ def calculate_movement_performance(trigger_date, scan_type, days_to_track, min_p
                 "performance": []
             }
 
-        # Calculate performance from trigger date and determine intraday pattern for each performance day
+        # Calculate performance from trigger date and determine intraday pattern
         days_since_trigger = row['day_num']
-        open_price = float(row['open'])
         current_price = float(row['close']) if row['close'] is not None else 0
         trigger_price = results[symbol]['trigger_close']
         
         performance_pct = ((current_price / trigger_price) - 1) * 100 if trigger_price > 0 else 0
-
-        # Determine the intraday pattern based on the performance day's open and close
-        if current_price > open_price:
-            intraday_pattern = "bullish"
-        elif current_price < open_price:
-            intraday_pattern = "bearish"
-        else:
-            intraday_pattern = "neutral"
+        intraday_move = float(row['intraday_move'])
+        intraday_pattern = "bullish" if intraday_move > 0 else "bearish" if intraday_move < 0 else "neutral"
 
         results[symbol]['performance'].append({
             "date": row['date'].strftime('%Y-%m-%d'),
             "day": days_since_trigger,
-            "open": open_price,
+            "open": float(row['open']),
             "close": current_price,
             "high": float(row['high']),
             "low": float(row['low']),
             "volume": row['volume'],
             "return": round(performance_pct, 2),
+            "intraday_move": intraday_move,
             "intraday_pattern": intraday_pattern
         })
 
     return list(results.values())
-
-def _parse_dynamic_conditions(form):
-    """Helper to parse the dynamic trigger conditions and logical operators from the form."""
-    conditions = {'trigger': []}
-    trigger_indices = sorted([int(k.split('_')[-1]) for k in form if k.startswith('trigger_field1_')])
-
-    for idx in trigger_indices:
-        conditions['trigger'].append({
-            'field1': form.get(f'trigger_field1_{idx}'),
-            'day1': form.get(f'trigger_day1_{idx}'),
-            'operator': form.get(f'trigger_operator_{idx}'),
-            'field2': form.get(f'trigger_field2_{idx}'),
-            'day2': form.get(f'trigger_day2_{idx}'),
-            'logical': form.get(f'trigger_logical_{idx-1}', 'AND')
-        })
-    return conditions
-
-@app.route('/pattern_analyzer', methods=['GET', 'POST'])
-@login_required
-def pattern_analyzer():
-    results = None
-    submitted_conditions = None
-    from_date = request.form.get('from_date')
-    to_date = request.form.get('to_date')
-    stock_symbol = request.form.get('stock_symbol', None)
-    days_to_track = int(request.form.get('days_to_track', 5))
-
-    if request.method == 'POST':
-        if not from_date or not to_date:
-            return render_template('pattern_analyzer.html', error="Please select both a start and end date.")
-
-        submitted_conditions = _parse_dynamic_conditions(request.form)
-
-        if not submitted_conditions['trigger']:
-            return render_template('pattern_analyzer.html', error="Please define at least one trigger condition.",
-                                 submitted_conditions=submitted_conditions, days_to_track=days_to_track)
-
-        results = analyze_pattern_performance(from_date, to_date, stock_symbol, submitted_conditions['trigger'], days_to_track)
-
-    return render_template('pattern_analyzer.html', results=results, from_date=from_date,
-                         to_date=to_date, stock_symbol=stock_symbol,
-                         submitted_conditions=submitted_conditions, days_to_track=days_to_track)
-
-def _build_sql_logic(conditions):
-    """Translates a list of condition objects into a safe, combined SQL string with AND/OR logic."""
-    allowed_fields = ['open', 'high', 'low', 'close']
-    allowed_operators = ['>', '<', '=']
-
-    sql_parts = []
-    for i, condition in enumerate(conditions):
-        field1 = condition['field1']
-        day1 = int(condition['day1'])
-        op = condition['operator']
-        field2 = condition['field2']
-        day2 = int(condition['day2'])
-        logical = condition.get('logical', 'AND').upper()
-
-        if field1 not in allowed_fields or field2 not in allowed_fields or op not in allowed_operators or logical not in ['AND', 'OR']:
-            raise ValueError("Invalid condition parameters.")
-
-        alias1 = f"t_{day1}".replace('-', 'minus_')
-        alias2 = f"t_{day2}".replace('-', 'minus_')
-        sql_part = f"{alias1}_{field1} {op} {alias2}_{field2}"
-
-        if i > 0:
-            sql_parts.append(logical)
-        sql_parts.append(sql_part)
-
-    return f"({ ' '.join(sql_parts) })" if sql_parts else "TRUE"
-
-def analyze_pattern_performance(from_date, to_date, stock_symbol, trigger_conditions, days_to_track):
-    """
-    Analyzes the performance of stocks for N days following a user-defined trigger pattern.
-    """
-    conn = get_db_connection()
-    cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
-
-    all_day_offsets = set([0])
-    for condition in trigger_conditions:
-        all_day_offsets.add(int(condition['day1']))
-        all_day_offsets.add(int(condition['day2']))
-
-    # Generate LAG/LEAD expressions for trigger condition validation
-    trigger_window_expressions = []
-    for offset in all_day_offsets:
-        if offset == 0: continue
-        func = 'LAG' if offset < 0 else 'LEAD'
-        alias_prefix = f"t_{offset}".replace('-', 'minus_')
-        for field in ['open', 'high', 'low', 'close']:
-            trigger_window_expressions.append(
-                f"{func}({field}, {abs(offset)}) OVER w AS {alias_prefix}_{field}"
-            )
-
-    # Generate LEAD expressions for performance tracking
-    performance_window_expressions = []
-    for i in range(1, days_to_track + 1):
-        performance_window_expressions.append(
-            f"LEAD(close, {i}) OVER w AS next_close_{i}"
-        )
-
-    try:
-        trigger_sql = _build_sql_logic(trigger_conditions)
-    except (ValueError, KeyError) as e:
-        return {"error": f"Failed to build SQL logic: {e}"}
-
-    symbol_filter = ""
-    params = [from_date, to_date]
-    if stock_symbol and stock_symbol.strip():
-        symbol_filter = "AND symbol = %s"
-        params.append(stock_symbol.upper().strip())
-
-    query = f"""
-    WITH daily_data_with_windows AS (
-        SELECT
-            date, symbol, close,
-            open AS t_0_open, high AS t_0_high, low AS t_0_low, close AS t_0_close,
-            {", ".join(trigger_window_expressions)},
-            {", ".join(performance_window_expressions)}
-        FROM raw_data
-        WINDOW w AS (PARTITION BY symbol ORDER BY date)
-    ),
-    triggered_events AS (
-        SELECT *
-        FROM daily_data_with_windows
-        WHERE date BETWEEN %s AND %s
-          {symbol_filter}
-          AND {trigger_sql}
-    )
-    SELECT * FROM triggered_events ORDER BY symbol, date;
-    """
-
-    try:
-        cursor.execute(query, tuple(params))
-        all_data = cursor.fetchall()
-    except psycopg2.Error as e:
-        print("Database Query Error:", e)
-        return [] # Return empty list on error
-    finally:
-        cursor.close()
-        conn.close()
-
-    # Process results into a list of dictionaries for the template
-    results = []
-    for row in all_data:
-        performance_pcts = []
-        trigger_close = float(row['close'])
-        for i in range(1, days_to_track + 1):
-            next_close = row.get(f'next_close_{i}')
-            if next_close is not None and trigger_close > 0:
-                perf = ((float(next_close) / trigger_close) - 1) * 100
-                performance_pcts.append(perf)
-            else:
-                performance_pcts.append(None) # Or 0, or some other indicator for missing data
-
-        results.append({
-            "symbol": row['symbol'],
-            "trigger_date": row['date'],
-            "performance": performance_pcts
-        })
-
-    return results
 
 if __name__ == '__main__':
     init_db()

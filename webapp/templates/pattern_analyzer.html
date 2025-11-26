@@ -92,8 +92,14 @@
                                 <td>{{ row.symbol }}</td>
                                 <td>{{ row.trigger_date.strftime('%Y-%m-%d') }}</td>
                                 {% for perf in row.performance %}
-                                    <td class="{{ 'positive' if perf > 0 else 'negative' if perf < 0 else '' }}">
-                                        {{ "%.2f"|format(perf) }}%
+                                    <td>
+                                        {% if perf is not none %}
+                                            <span class="{{ 'positive' if perf > 0 else 'negative' if perf < 0 else '' }}">
+                                                {{ "%.2f"|format(perf) }}%
+                                            </span>
+                                        {% else %}
+                                            N/A
+                                        {% endif %}
                                     </td>
                                 {% endfor %}
                             </tr>
