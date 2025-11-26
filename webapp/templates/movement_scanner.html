@@ -44,10 +44,6 @@
                     <option value="bearish" {% if scan_type == 'bearish' %}selected{% endif %}>Bearish Trigger</option>
                 </select>
             </div>
-            <div class="form-group">
-                <label for="stock_symbol">Stock Symbol (Optional)</label>
-                <input type="text" id="stock_symbol" name="stock_symbol" value="{{ stock_symbol or '' }}" placeholder="e.g., INFY.NS">
-            </div>
             <button type="submit">Scan</button>
         </form>
     </div>
@@ -80,7 +76,7 @@
                         <td>
                             <div class="performance-dots">
                                 {% for day_perf in result.performance %}
-                                    <div class="dot {{ 'dot-green' if day_perf.intraday_pattern == 'bullish' else 'dot-red' }}">
+                                    <div class="dot {{ 'dot-green' if day_perf.return >= 0 else 'dot-red' }}">
                                         <span class="tooltip">{{ day_perf.date }}: {{ "%.2f"|format(day_perf.return) }}%</span>
                                     </div>
                                 {% endfor %}
