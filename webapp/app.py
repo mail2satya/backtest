@@ -409,51 +409,43 @@ def movement_scanner():
 
 def calculate_movement_performance(trigger_date, scan_type, days_to_track, min_price=0, max_price=10000):
     """
-    Finds stocks based on trigger pattern (open and close above/below previous day's CLOSE price)
-    and tracks their intraday pattern (bullish/bearish) for the next N days.
+    Finds stocks based on a trigger pattern (e.g., open and close above previous day's close)
+    and tracks their performance for the next N days. This version uses LAG() to robustly
+    find the previous trading day, avoiding issues with weekends and holidays.
     """
     conn = get_db_connection()
     cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
 
-    # Trigger logic based on previous day's CLOSE price
+    # Define the trigger condition based on the scan type
     if scan_type == 'bullish':
-        condition = """
-            AND current.open > previous.close
-            AND current.close > previous.close
-        """
+        condition = "AND open > prev_day_close AND close > prev_day_close"
     elif scan_type == 'bearish':
-        condition = """
-            AND current.open < previous.close
-            AND current.close < previous.close
-        """
+        condition = "AND open < prev_day_close AND close < prev_day_close"
     else:
         return []
 
+    # This more robust query uses the LAG() window function to get the previous day's data,
+    # which correctly handles non-trading days like weekends and holidays.
     query = """
-    WITH previous_data AS (
+    WITH daily_data_with_prev_close AS (
         SELECT
-            symbol, date, open as prev_open, close as prev_close
-        FROM raw_data
-    ),
-    current_data AS (
-        SELECT
-            symbol, date, open, close, high, low, volume
+            symbol, date, open, close, high, low, volume,
+            LAG(close, 1) OVER (PARTITION BY symbol ORDER BY date) AS prev_day_close
         FROM raw_data
     ),
     triggered_stocks AS (
         SELECT
-            current.symbol,
-            current.date AS trigger_date,
-            current.open AS trigger_open,
-            current.close AS trigger_close,
-            previous.prev_close AS prev_day_close,
-            (current.close - current.open) AS trigger_intraday_move
-        FROM current_data current
-        JOIN previous_data previous ON current.symbol = previous.symbol
-            AND current.date = previous.date + INTERVAL '1 day'
-        WHERE current.date = %s
-            AND current.open BETWEEN %s AND %s
-            {condition}
+            symbol,
+            date AS trigger_date,
+            open AS trigger_open,
+            close AS trigger_close,
+            prev_day_close,
+            (close - open) AS trigger_intraday_move
+        FROM daily_data_with_prev_close
+        WHERE date = %s
+          AND open BETWEEN %s AND %s
+          AND prev_day_close IS NOT NULL
+          {condition}
     ),
     performance_days AS (
         SELECT
@@ -471,8 +463,7 @@ def calculate_movement_performance(trigger_date, scan_type, days_to_track, min_p
             (rd.close - rd.open) AS intraday_move,
             ROW_NUMBER() OVER (PARTITION BY ts.symbol ORDER BY rd.date) AS day_num
         FROM triggered_stocks ts
-        JOIN raw_data rd ON ts.symbol = rd.symbol
-        WHERE rd.date > ts.trigger_date
+        JOIN raw_data rd ON ts.symbol = rd.symbol AND rd.date > ts.trigger_date
     )
     SELECT
         symbol,
@@ -487,19 +478,25 @@ def calculate_movement_performance(trigger_date, scan_type, days_to_track, min_p
         low,
         volume,
         intraday_move,
-        ROUND((close - trigger_close) / trigger_close * 100, 2) AS performance_pct,
+        -- Calculate the percentage return based on the trigger day's closing price
+        ROUND(((close - trigger_close) / trigger_close) * 100, 2) AS performance_pct,
         day_num
     FROM performance_days
     WHERE day_num <= %s
     ORDER BY symbol, date;
     """.format(condition=condition)
 
-    cursor.execute(query, (trigger_date, min_price, max_price, days_to_track))
-    all_data = cursor.fetchall()
-    cursor.close()
-    conn.close()
+    try:
+        cursor.execute(query, (trigger_date, min_price, max_price, days_to_track))
+        all_data = cursor.fetchall()
+    except psycopg2.Error as e:
+        print(f"Database query failed: {e}")
+        return [] # Return empty list on error to prevent crashing the app
+    finally:
+        cursor.close()
+        conn.close()
 
-    # Process the data for template consumption
+    # Process the flat data into a nested structure for easier rendering in the template
     results = {}
     for row in all_data:
         symbol = row['symbol']
@@ -513,24 +510,20 @@ def calculate_movement_performance(trigger_date, scan_type, days_to_track, min_p
                 "performance": []
             }
 
-        # Calculate performance from trigger date and determine intraday pattern
-        days_since_trigger = row['day_num']
-        current_price = float(row['close']) if row['close'] is not None else 0
-        trigger_price = results[symbol]['trigger_close']
-        
-        performance_pct = ((current_price / trigger_price) - 1) * 100 if trigger_price > 0 else 0
         intraday_move = float(row['intraday_move'])
+
+        # The color of the dot should be based on the day's candle direction, not the cumulative return.
         intraday_pattern = "bullish" if intraday_move > 0 else "bearish" if intraday_move < 0 else "neutral"
 
         results[symbol]['performance'].append({
             "date": row['date'].strftime('%Y-%m-%d'),
-            "day": days_since_trigger,
+            "day": row['day_num'],
             "open": float(row['open']),
-            "close": current_price,
+            "close": float(row['close']),
             "high": float(row['high']),
             "low": float(row['low']),
             "volume": row['volume'],
-            "return": round(performance_pct, 2),
+            "return": row['performance_pct'],
             "intraday_move": intraday_move,
             "intraday_pattern": intraday_pattern
         })
@@ -648,13 +641,18 @@ def analyze_pattern_performance(from_date, to_date, stock_symbol, trigger_condit
         params.append(stock_symbol.upper().strip())
 
     query = f"""
-    WITH daily_data_with_windows AS (
+    WITH trading_days AS (
+        SELECT *
+        FROM raw_data
+        WHERE volume > 0
+    ),
+    daily_data_with_windows AS (
         SELECT
             date, symbol, close,
             open AS t_0_open, high AS t_0_high, low AS t_0_low, close AS t_0_close,
             {", ".join(trigger_window_expressions)},
             {", ".join(performance_window_expressions)}
-        FROM raw_data
+        FROM trading_days
         WINDOW w AS (PARTITION BY symbol ORDER BY date)
     ),
     triggered_events AS (
