@@ -204,5 +204,24 @@
         document.getElementById('analyzer-form').addEventListener('submit', function() {
             document.getElementById('loader').style.display = 'block';
         });
+
+        // Initialize jQuery UI Autocomplete for the stock symbol input
+        $(function() {
+            $("#stock_symbol").autocomplete({
+                source: function(request, response) {
+                    $.ajax({
+                        url: "{{ url_for('search') }}",
+                        dataType: "json",
+                        data: {
+                            q: request.term
+                        },
+                        success: function(data) {
+                            response(data);
+                        }
+                    });
+                },
+                minLength: 2, // Start searching after 2 characters
+            });
+        });
     </script>
 {% endblock %}

@@ -44,6 +44,18 @@
                     <option value="bearish" {% if scan_type == 'bearish' %}selected{% endif %}>Bearish Trigger</option>
                 </select>
             </div>
+            <div class="form-group">
+                <label for="stock_symbol">Stock Symbol (Optional)</label>
+                <input type="text" id="stock_symbol" name="stock_symbol" value="{{ stock_symbol or '' }}" placeholder="e.g., RELIANCE">
+            </div>
+            <div class="form-group">
+                <label for="min_price">Min Price</label>
+                <input type="number" id="min_price" name="min_price" value="{{ min_price or 0 }}" min="0">
+            </div>
+            <div class="form-group">
+                <label for="max_price">Max Price</label>
+                <input type="number" id="max_price" name="max_price" value="{{ max_price or 10000 }}" min="0">
+            </div>
             <button type="submit">Scan</button>
         </form>
     </div>
@@ -104,5 +116,24 @@
             yesterday.setDate(yesterday.getDate() - 1);
             document.getElementById('trigger_date').value = yesterday.toISOString().split('T')[0];
         }
+
+        // Initialize jQuery UI Autocomplete
+        $(function() {
+            $("#stock_symbol").autocomplete({
+                source: function(request, response) {
+                    $.ajax({
+                        url: "{{ url_for('search') }}",
+                        dataType: "json",
+                        data: {
+                            q: request.term
+                        },
+                        success: function(data) {
+                            response(data);
+                        }
+                    });
+                },
+                minLength: 2, // Minimum characters to trigger autocomplete
+            });
+        });
     </script>
 {% endblock %}

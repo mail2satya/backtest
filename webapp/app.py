@@ -390,33 +390,47 @@ def calculate_scanner_performance(investment_amount, from_date, to_date, stock_s
 @app.route('/movement_scanner', methods=['GET', 'POST'])
 @login_required
 def movement_scanner():
+    # Set default values for GET request
+    results = None
+    trigger_date = (datetime.now() - timedelta(days=1)).strftime('%Y-%m-%d')
+    days_to_track = 5
+    scan_type = 'bullish'
+    stock_symbol = ''
+    min_price = 0
+    max_price = 10000
+
     if request.method == 'POST':
         trigger_date = request.form.get('trigger_date')
         days_to_track = int(request.form.get('days_to_track', 5))
         scan_type = request.form.get('scan_type', 'bullish')
+        stock_symbol = request.form.get('stock_symbol', '').strip().upper()
         min_price = float(request.form.get('min_price', 0))
         max_price = float(request.form.get('max_price', 10000))
 
         if not trigger_date:
-            return render_template('movement_scanner.html', error="Please select a trigger date.")
+            flash("Please select a trigger date.", "error")
+        else:
+            results = calculate_movement_performance(trigger_date, scan_type, days_to_track, stock_symbol, min_price, max_price)
 
-        results = calculate_movement_performance(trigger_date, scan_type, days_to_track, min_price, max_price)
+    return render_template('movement_scanner.html',
+                         results=results,
+                         trigger_date=trigger_date,
+                         days_to_track=days_to_track,
+                         scan_type=scan_type,
+                         stock_symbol=stock_symbol,
+                         min_price=min_price,
+                         max_price=max_price)
 
-        return render_template('movement_scanner.html', results=results, trigger_date=trigger_date, 
-                             days_to_track=days_to_track, scan_type=scan_type, min_price=min_price, max_price=max_price)
 
-    return render_template('movement_scanner.html')
-
-def calculate_movement_performance(trigger_date, scan_type, days_to_track, min_price=0, max_price=10000):
+def calculate_movement_performance(trigger_date, scan_type, days_to_track, stock_symbol=None, min_price=0, max_price=10000):
     """
-    Finds stocks based on a trigger pattern (e.g., open and close above previous day's close)
-    and tracks their performance for the next N days. This version uses LAG() to robustly
-    find the previous trading day, avoiding issues with weekends and holidays.
+    Finds stocks based on a trigger pattern and tracks their daily intraday performance for N days.
+    - Performance is calculated as the percentage change from that day's open to its close.
+    - Includes an optional filter for a specific stock symbol and price range.
     """
     conn = get_db_connection()
     cursor = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
 
-    # Define the trigger condition based on the scan type
     if scan_type == 'bullish':
         condition = "AND open > prev_day_close AND close > prev_day_close"
     elif scan_type == 'bearish':
@@ -424,26 +438,32 @@ def calculate_movement_performance(trigger_date, scan_type, days_to_track, min_p
     else:
         return []
 
-    # This more robust query uses the LAG() window function to get the previous day's data,
-    # which correctly handles non-trading days like weekends and holidays.
-    query = """
+    # Build the query parameters dynamically
+    params = [trigger_date, min_price, max_price]
+    symbol_filter = ""
+    if stock_symbol:
+        symbol_filter = "AND symbol = %s"
+        params.append(stock_symbol)
+
+    query = f"""
     WITH daily_data_with_prev_close AS (
         SELECT
             symbol, date, open, close, high, low, volume,
             LAG(close, 1) OVER (PARTITION BY symbol ORDER BY date) AS prev_day_close
         FROM raw_data
+        WHERE volume > 0 -- Ensure we are only considering trading days
     ),
     triggered_stocks AS (
         SELECT
             symbol,
             date AS trigger_date,
-            open AS trigger_open,
             close AS trigger_close,
             prev_day_close,
             (close - open) AS trigger_intraday_move
         FROM daily_data_with_prev_close
         WHERE date = %s
           AND open BETWEEN %s AND %s
+          {symbol_filter}
           AND prev_day_close IS NOT NULL
           {condition}
     ),
@@ -452,51 +472,39 @@ def calculate_movement_performance(trigger_date, scan_type, days_to_track, min_p
             ts.symbol,
             ts.trigger_date,
             ts.trigger_close,
-            ts.prev_day_close,
-            ts.trigger_intraday_move,
             rd.date,
             rd.open,
             rd.close,
             rd.high,
             rd.low,
             rd.volume,
-            (rd.close - rd.open) AS intraday_move,
+            -- Calculate the INTRA-DAY performance for each subsequent day
+            CASE WHEN rd.open > 0 THEN
+                ROUND(((rd.close - rd.open) / rd.open) * 100, 2)
+            ELSE 0 END AS performance_pct,
             ROW_NUMBER() OVER (PARTITION BY ts.symbol ORDER BY rd.date) AS day_num
         FROM triggered_stocks ts
         JOIN raw_data rd ON ts.symbol = rd.symbol AND rd.date > ts.trigger_date
     )
-    SELECT
-        symbol,
-        trigger_date,
-        trigger_close,
-        prev_day_close,
-        trigger_intraday_move,
-        date,
-        open,
-        close,
-        high,
-        low,
-        volume,
-        intraday_move,
-        -- Calculate the percentage return based on the trigger day's closing price
-        ROUND(((close - trigger_close) / trigger_close) * 100, 2) AS performance_pct,
-        day_num
+    SELECT *
     FROM performance_days
     WHERE day_num <= %s
     ORDER BY symbol, date;
-    """.format(condition=condition)
+    """
+
+    params.append(days_to_track)
 
     try:
-        cursor.execute(query, (trigger_date, min_price, max_price, days_to_track))
+        cursor.execute(query, tuple(params))
         all_data = cursor.fetchall()
     except psycopg2.Error as e:
         print(f"Database query failed: {e}")
-        return [] # Return empty list on error to prevent crashing the app
+        return []
     finally:
         cursor.close()
         conn.close()
 
-    # Process the flat data into a nested structure for easier rendering in the template
+    # Group results by stock symbol
     results = {}
     for row in all_data:
         symbol = row['symbol']
@@ -505,26 +513,16 @@ def calculate_movement_performance(trigger_date, scan_type, days_to_track, min_p
                 "stock": symbol,
                 "trigger_date": row['trigger_date'].strftime('%Y-%m-%d'),
                 "trigger_close": float(row['trigger_close']),
-                "prev_day_close": float(row['prev_day_close']),
-                "trigger_intraday_move": float(row['trigger_intraday_move']),
                 "performance": []
             }
 
-        intraday_move = float(row['intraday_move'])
-
-        # The color of the dot should be based on the day's candle direction, not the cumulative return.
-        intraday_pattern = "bullish" if intraday_move > 0 else "bearish" if intraday_move < 0 else "neutral"
+        # Determine the intraday pattern for dot coloring
+        intraday_pattern = "bullish" if row['close'] > row['open'] else "bearish" if row['close'] < row['open'] else "neutral"
 
         results[symbol]['performance'].append({
             "date": row['date'].strftime('%Y-%m-%d'),
             "day": row['day_num'],
-            "open": float(row['open']),
-            "close": float(row['close']),
-            "high": float(row['high']),
-            "low": float(row['low']),
-            "volume": row['volume'],
             "return": row['performance_pct'],
-            "intraday_move": intraday_move,
             "intraday_pattern": intraday_pattern
         })
 
