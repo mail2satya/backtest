@@ -404,8 +404,11 @@ def movement_scanner():
         days_to_track = int(request.form.get('days_to_track', 5))
         scan_type = request.form.get('scan_type', 'bullish')
         stock_symbol = request.form.get('stock_symbol', '').strip().upper()
-        min_price = float(request.form.get('min_price', 0))
-        max_price = float(request.form.get('max_price', 10000))
+        min_price_str = request.form.get('min_price', '0')
+        max_price_str = request.form.get('max_price', '10000')
+
+        min_price = float(min_price_str) if min_price_str else 0
+        max_price = float(max_price_str) if max_price_str else 10000
 
         if not trigger_date:
             flash("Please select a trigger date.", "error")
