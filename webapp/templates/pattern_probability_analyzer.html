@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+
+{% block title %}Pattern Probability Analyzer{% endblock %}
+
+{% block head %}
+<style>
+    .form-container {
+        background-color: #f9f9f9;
+        padding: 20px;
+        border-radius: 8px;
+        margin-bottom: 20px;
+        display: flex;
+        justify-content: center;
+    }
+
+    .results-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 20px;
+    }
+
+    .results-table th,
+    .results-table td {
+        border: 1px solid #ddd;
+        padding: 10px;
+        text-align: left;
+    }
+
+    .results-table th {
+        background-color: #f2f2f2;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<h1>Pattern Probability Analyzer</h1>
+<p class="text-center">This tool analyzes a stock's entire history to find the probability of a positive next day based on common technical patterns.</p>
+
+<div class="form-container">
+    <form id="analyzer-form" method="POST" class="form-inline">
+        <div class="form-group">
+            <label for="stock_symbol" class="sr-only">Stock Symbol</label>
+            <input type="text" id="stock_symbol" name="stock_symbol" value="{{ stock_symbol or '' }}" placeholder="Enter Stock Symbol (e.g., RELIANCE)" required class="form-control">
+        </div>
+        <button type="submit" class="btn btn-primary">Analyze</button>
+    </form>
+</div>
+
+{% if results is not none %}
+    <h2>Analysis for {{ stock_symbol }}</h2>
+    {% if results %}
+    <table class="results-table">
+        <thead>
+            <tr>
+                <th>Pattern Description</th>
+                <th>Occurrences</th>
+                <th>Success Rate (%)</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for result in results %}
+            <tr>
+                <td>{{ result.pattern }}</td>
+                <td>{{ result.occurrences }}</td>
+                <td>{{ "%.2f"|format(result.probability) }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p>No patterns found or analyzed for the given stock.</p>
+    {% endif %}
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+    $(function() {
+        $("#stock_symbol").autocomplete({
+            source: "{{ url_for('search') }}",
+            minLength: 2
+        });
+    });
+</script>
+{% endblock %}
